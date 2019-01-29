@@ -4,6 +4,9 @@
 #include "../../Common/StringUtil.h"
 #include "../../Common/TimeUtil.h"
 
+//字幕属性情報を映像情報のtext_charフィールドに追加しない場合はこのマクロを定義する
+//#define EPGDB_NO_ADD_CAPTION_TO_COMPONENT
+
 //#define DEBUG_EIT
 #ifdef DEBUG_EIT
 static WCHAR g_szDebugEIT[128];
@@ -231,15 +234,16 @@ BOOL CEpgDBUtil::AddEIT(WORD PID, const Desc::CDescriptor& eit, __int64 streamTi
 			}
 			if( serviceInfo->lastTableID == 0 ){
 				//リセット
-				memset(serviceInfo->sectionList, 0, sizeof(SECTION_FLAG_INFO) * 8);
+				SECTION_FLAG_INFO infoZero = {};
+				std::fill_n(serviceInfo->sectionList, 8, infoZero);
 				for( int i = 1; i < 8; i++ ){
 					//第0テーブル以外のセクションを無視
-					memset(serviceInfo->sectionList[i].ignoreFlags, 0xFF, sizeof(serviceInfo->sectionList[0].ignoreFlags));
+					std::fill_n(serviceInfo->sectionList[i].ignoreFlags, _countof(serviceInfo->sectionList[0].ignoreFlags), 0xFF);
 				}
 				serviceInfo->lastTableID = table_id;
 			}
 			//第0セグメント以外のセクションを無視
-			memset(serviceInfo->sectionList[0].ignoreFlags + 1, 0xFF, sizeof(serviceInfo->sectionList[0].ignoreFlags) - 1);
+			std::fill_n(serviceInfo->sectionList[0].ignoreFlags + 1, _countof(serviceInfo->sectionList[0].ignoreFlags) - 1, 0xFF);
 			//第0セグメントの送られないセクションを無視
 			for( int i = eit.GetNumber(Desc::segment_last_section_number) % 8 + 1; i < 8; i++ ){
 				serviceInfo->sectionList[0].ignoreFlags[0] |= 1 << i;
@@ -262,19 +266,20 @@ BOOL CEpgDBUtil::AddEIT(WORD PID, const Desc::CDescriptor& eit, __int64 streamTi
 			}
 			if( lastTableID == 0 ){
 				//リセット
-				memset(sectionList, 0, sizeof(SECTION_FLAG_INFO) * 8);
+				SECTION_FLAG_INFO infoZero = {};
+				std::fill_n(sectionList, 8, infoZero);
 				for( int i = eit.GetNumber(Desc::last_table_id) % 8 + 1; i < 8; i++ ){
 					//送られないテーブルのセクションを無視
-					memset(sectionList[i].ignoreFlags, 0xFF, sizeof(sectionList[0].ignoreFlags));
+					std::fill_n(sectionList[i].ignoreFlags, _countof(sectionList[0].ignoreFlags), 0xFF);
 				}
 				lastTableID = (BYTE)eit.GetNumber(Desc::last_table_id);
 			}
 			//送られないセグメントのセクションを無視
-			memset(sectionList[table_id % 8].ignoreFlags + (BYTE)eit.GetNumber(Desc::last_section_number) / 8 + 1, 0xFF,
-				sizeof(sectionList[0].ignoreFlags) - (BYTE)eit.GetNumber(Desc::last_section_number) / 8 - 1);
+			std::fill_n(sectionList[table_id % 8].ignoreFlags + (BYTE)eit.GetNumber(Desc::last_section_number) / 8 + 1,
+			            _countof(sectionList[0].ignoreFlags) - (BYTE)eit.GetNumber(Desc::last_section_number) / 8 - 1, 0xFF);
 			if( table_id % 8 == 0 && streamTime > 0 ){
 				//放送済みセグメントのセクションを無視
-				memset(sectionList[0].ignoreFlags, 0xFF, streamTime / (3 * 60 * 60 * I64_1SEC) % 8);
+				std::fill_n(sectionList[0].ignoreFlags, streamTime / (3 * 60 * 60 * I64_1SEC) % 8, 0xFF);
 			}
 			//このセグメントの送られないセクションを無視
 			for( int i = eit.GetNumber(Desc::segment_last_section_number) % 8 + 1; i < 8; i++ ){
@@ -288,6 +293,19 @@ BOOL CEpgDBUtil::AddEIT(WORD PID, const Desc::CDescriptor& eit, __int64 streamTi
 	return TRUE;
 }
 
+int CEpgDBUtil::GetCaptionInfo(const Desc::CDescriptor& eit, Desc::CDescriptor::CLoopPointer lp)
+{
+	//セレクタ領域のarib_caption_info
+	DWORD infoSize;
+	const BYTE* info = eit.GetBinary(Desc::selector_byte, &infoSize, lp);
+	int flags = 0;
+	for( DWORD i = 0; info && i * 4 + 4 < infoSize && i < info[0]; i++ ){
+		//日本語(以外)の字幕がある
+		flags |= memcmp(info + i * 4 + 2, "jpn", 3) == 0 ? 1 : 2;
+	}
+	return flags;
+}
+
 void CEpgDBUtil::AddBasicInfo(EPGDB_EVENT_INFO* eventInfo, const Desc::CDescriptor& eit, Desc::CDescriptor::CLoopPointer lpParent, WORD onid, WORD tsid)
 {
 	eventInfo->hasShortInfo = false;
@@ -297,6 +315,9 @@ void CEpgDBUtil::AddBasicInfo(EPGDB_EVENT_INFO* eventInfo, const Desc::CDescript
 	eventInfo->eventRelayInfoGroupType = 0;
 	Desc::CDescriptor::CLoopPointer lp = lpParent;
 	if( eit.EnterLoop(lp) ){
+#ifndef EPGDB_NO_ADD_CAPTION_TO_COMPONENT
+		DWORD dataContentIndex = MAXDWORD;
+#endif
 		for( DWORD i = 0; eit.SetLoopIndex(lp, i); i++ ){
 			switch( eit.GetNumber(Desc::descriptor_tag, lp) ){
 			case Desc::short_event_descriptor:
@@ -315,8 +336,34 @@ void CEpgDBUtil::AddBasicInfo(EPGDB_EVENT_INFO* eventInfo, const Desc::CDescript
 					AddEventRelay(eventInfo, eit, lp, onid, tsid);
 				}
 				break;
+#ifndef EPGDB_NO_ADD_CAPTION_TO_COMPONENT
+			case Desc::data_content_descriptor:
+				if( eit.GetNumber(Desc::data_component_id, lp) == 0x0008 ){
+					dataContentIndex = i;
+				}
+				break;
+#endif
 			}
 		}
+#ifndef EPGDB_NO_ADD_CAPTION_TO_COMPONENT
+		if( eventInfo->hasComponentInfo && dataContentIndex != MAXDWORD ){
+			eit.SetLoopIndex(lp, dataContentIndex);
+			int flags = GetCaptionInfo(eit, lp);
+			//番組名で判断できないときだけ
+			if( (flags & 2) || ((flags & 1) && (eventInfo->hasShortInfo == false ||
+			        eventInfo->shortInfo.event_name.find(CARIB8CharDecode::TELETEXT_MARK) == wstring::npos)) ){
+				if( flags & 1 ){
+					eventInfo->componentInfo.text_char += L"[字]";
+				}
+				if( flags & 2 ){
+					eventInfo->componentInfo.text_char += L"[二字]";
+				}
+			}else if( flags == 0 && eventInfo->hasShortInfo &&
+			          eventInfo->shortInfo.event_name.find(CARIB8CharDecode::TELETEXT_MARK) != wstring::npos ){
+				eventInfo->componentInfo.text_char += L"[字無]";
+			}
+		}
+#endif
 	}
 	if( AddAudioComponent(eventInfo, eit, lpParent) == FALSE ){
 		eventInfo->hasAudioInfo = false;
@@ -420,10 +467,11 @@ void CEpgDBUtil::AddContent(EPGDB_EVENT_INFO* eventInfo, const Desc::CDescriptor
 		eventInfo->contentInfo.nibbleList.resize(eit.GetLoopSize(lp));
 		for( DWORD i = 0; eit.SetLoopIndex(lp, i); i++ ){
 			EPG_CONTENT& nibble = eventInfo->contentInfo.nibbleList[i];
-			nibble.content_nibble_level_1 = (BYTE)eit.GetNumber(Desc::content_nibble_level_1, lp);
-			nibble.content_nibble_level_2 = (BYTE)eit.GetNumber(Desc::content_nibble_level_2, lp);
-			nibble.user_nibble_1 = (BYTE)eit.GetNumber(Desc::user_nibble_1, lp);
-			nibble.user_nibble_2 = (BYTE)eit.GetNumber(Desc::user_nibble_2, lp);
+			DWORD n = eit.GetNumber(Desc::content_user_nibble, lp);
+			nibble.content_nibble_level_1 = (n >> 12) & 0x0F;
+			nibble.content_nibble_level_2 = (n >> 8) & 0x0F;
+			nibble.user_nibble_1 = (n >> 4) & 0x0F;
+			nibble.user_nibble_2 = n & 0x0F;
 		}
 	}
 }
