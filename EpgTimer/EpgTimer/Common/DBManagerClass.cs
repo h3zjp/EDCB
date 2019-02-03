@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
@@ -60,6 +60,7 @@ namespace EpgTimer
         public List<String> WritePlugInList { get; private set; }
         public Dictionary<UInt32, ManualAutoAddData> ManualAutoAddList { get; private set; }
         public Dictionary<UInt32, EpgAutoAddData> EpgAutoAddList { get; private set; }
+        public bool isEpgDataLoading { get; private set; }
 
         public AutoAddDataAppend GetManualAutoAddDataAppend(ManualAutoAddData master)
         {
@@ -420,6 +421,7 @@ namespace EpgTimer
         {
             return ReloadWork(UpdateNotifyItem.EpgData, immediately, noRaiseChanged, ret =>
             {
+                isEpgDataLoading = true;
                 ServiceEventList = new Dictionary<ulong, EpgServiceAllEventInfo>();
 
                 var list = new List<EpgServiceEventInfo>();
@@ -450,6 +452,7 @@ namespace EpgTimer
 
                 //リモコンIDの登録
                 ChSet5.SetRemoconID(ServiceEventList);
+                isEpgDataLoading = false;
 
                 reserveEventList = null;
                 reserveEventListCache = null;

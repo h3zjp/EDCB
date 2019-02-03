@@ -1027,5 +1027,42 @@ namespace EpgTimer
         {
             return ViewUtil.MainWindow.epgView.SearchJumpTargetProgram(target, !switchTab);
         }
+
+        public static void addGenre(MenuItem mi0, List<EpgContentData> contentList0, Action<ContentKindInfo> click0)
+        {
+            mi0.Items.Clear();
+            var infoList = contentList0.Where(info => info.IsAttributeInfo == false).ToList();
+            var knownList = infoList.Where(info => CommonManager.ContentKindDictionary.ContainsKey(info.Key) == true).ToList();
+            foreach (var gr1 in knownList.Select(info => CommonManager.ContentKindDictionary[info.Key]).GroupBy(info => info.Data.CategoryKey))
+            {
+                ContentKindInfo cki1;
+                if (CommonManager.ContentKindDictionary.TryGetValue(gr1.Key, out cki1))
+                {
+                    addGenre2Menu(mi0, cki1, click0, true);
+                    foreach (var cki2 in gr1.Where(info => info.Data.IsCategory == false))
+                    {
+                        addGenre2Menu(mi0, cki2, click0);
+                    }
+                }
+            }
+        }
+
+        static void addGenre2Menu(MenuItem menuItem0, ContentKindInfo contentKindInfo0, Action<ContentKindInfo> click0, bool isCategory0 = false)
+        {
+            MenuItem mi1 = new MenuItem();
+            if (isCategory0)
+            {
+                mi1.Header = contentKindInfo0.ContentName;
+            }
+            else
+            {
+                mi1.Header = "  " + contentKindInfo0.SubName;
+            }
+            mi1.Click += (sender, e) =>
+            {
+                click0(contentKindInfo0);
+            };
+            menuItem0.Items.Add(mi1);
+        }
     }
 }

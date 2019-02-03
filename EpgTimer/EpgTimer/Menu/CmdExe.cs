@@ -141,7 +141,7 @@ namespace EpgTimer
             cmdList.Add(EpgCmds.ViewChgReSet, new cmdOption(null, null, cmdExeType.SingleItem, needItem: false));//個別に指定
             cmdList.Add(EpgCmds.ViewChgMode, new cmdOption(null, null, cmdExeType.SingleItem, needItem: false));//個別に指定
             cmdList.Add(EpgCmds.MenuSetting, new cmdOption(mc_MenuSetting, null, cmdExeType.Direct, needItem: false));
-
+            cmdList.Add(EpgCmds.SearchRecLog, new cmdOption(mc_SearchRecLog, null, cmdExeType.SingleItem));
             cmdList.Add(EpgCmdsEx.AddMenu, new cmdOption(null));//メニュー用
             cmdList.Add(EpgCmdsEx.ChgMenu, new cmdOption(null));//メニュー用
             cmdList.Add(EpgCmdsEx.ShowAutoAddDialogMenu, new cmdOption(null));//メニュー用
@@ -439,6 +439,7 @@ namespace EpgTimer
                 mainWindow.RefreshMenu();
             }
         }
+        protected virtual void mc_SearchRecLog(object sender, ExecutedRoutedEventArgs e) { }
         protected bool mcc_chgRecSetting(ExecutedRoutedEventArgs e)
         {
             List<RecSettingData> infoList = dataList.OfType<IRecSetttingData>().Where(data => data.RecSettingInfo != null).RecSettingList();

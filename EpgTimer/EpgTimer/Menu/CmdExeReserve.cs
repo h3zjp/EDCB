@@ -4,7 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-    
+
 namespace EpgTimer
 {
     public class CmdExeReserve : CmdExe<ReserveData>
@@ -48,7 +48,7 @@ namespace EpgTimer
                 eventList = _getEpgEventList == null ? null : _getEpgEventList();
                 eventList = eventList == null ? new List<EpgEventInfo>() : eventList.OfType<EpgEventInfo>().ToList();
                 eventListEx = new List<EpgEventInfo>();
-                eventList.ForEach(epg => 
+                eventList.ForEach(epg =>
                 {
                     if (dataList.All(res => epg.CurrentPgUID() != res.CurrentPgUID()))
                     {
@@ -284,7 +284,7 @@ namespace EpgTimer
                     if (view == CtxmCode.TunerReserveView && Settings.Instance.MenuSet.IsManualAssign.Contains(view) == false)
                     {
                         //簡易メニュー時は、無効列非表示のとき表示しない。
-                        if( Settings.Instance.TunerDisplayOffReserve == false)
+                        if (Settings.Instance.TunerDisplayOffReserve == false)
                         {
                             menu.Visibility = Visibility.Collapsed;
                         }
@@ -376,5 +376,35 @@ namespace EpgTimer
             }
             return GetCmdMessageFormat(cmdMsg, procCount);
         }
+        protected override void mc_SearchRecLog(object sender, ExecutedRoutedEventArgs e)
+        {
+            ContextMenu cm1 = (ContextMenu)sender;
+            ReserveItem reserveItem1 = cm1.DataContext as ReserveItem;
+            if (reserveItem1 != null)
+            {
+                this.recLogWindow.showResult(reserveItem1.EventInfo);
+            }
+            else if (eventList.Count != 0)
+            {
+                this.recLogWindow.showResult(eventList[0]);
+            }
+            else if (dataList.Count != 0)
+            {
+                this.recLogWindow.showResult(dataList[0]);
+            }
+            IsCommandExecuted = true;
+        }
+        RecLogWindow recLogWindow
+        {
+            get
+            {
+                if (this._recLogWindow == null)
+                {
+                    this._recLogWindow = new RecLogWindow(Window.GetWindow(this.Owner));
+                }
+                return this._recLogWindow;
+            }
+        }
+        RecLogWindow _recLogWindow = null;
     }
 }

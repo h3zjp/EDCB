@@ -207,6 +207,7 @@ namespace EpgTimer
             ctmd.Items.Add(new CtxmItemData("番組名でキーワード予約作成...", EpgCmds.ToAutoadd));
             ctmd.Items.Add(new CtxmItemData("追っかけ再生", EpgCmds.Play));
             ctmd.Items.Add(new CtxmItemData("録画フォルダを開く", EpgCmdsEx.OpenFolderMenu));
+            ctmd.Items.Add(new CtxmItemData("録画ログを検索(_L)", EpgCmds.SearchRecLog));
             ctmd.Items.AddRange(AddAppendMenus.DeepClone());
             ctmd.Items.AddRange(AddAppendTagMenus.DeepClone());
             ctmd.Items.AddRange(AddMenuSetting.DeepClone());
@@ -225,6 +226,7 @@ namespace EpgTimer
             ctmd.Items.Add(new CtxmItemData("番組名でキーワード予約作成...", EpgCmds.ToAutoadd));
             ctmd.Items.Add(new CtxmItemData("追っかけ再生", EpgCmds.Play));
             ctmd.Items.Add(new CtxmItemData("録画フォルダを開く", EpgCmdsEx.OpenFolderMenu));
+            ctmd.Items.Add(new CtxmItemData("録画ログを検索(_L)", EpgCmds.SearchRecLog));
             ctmd.Items.AddRange(AddAppendMenus.DeepClone());
             ctmd.Items.AddRange(AddAppendTagMenus.DeepClone());
             ctmd.Items.AddRange(AddMenuSetting.DeepClone());
@@ -239,6 +241,7 @@ namespace EpgTimer
             ctmd.Items.Add(new CtxmItemData("番組名でキーワード予約作成...", EpgCmds.ToAutoadd));
             ctmd.Items.Add(new CtxmItemData("再生", EpgCmds.Play));
             ctmd.Items.Add(new CtxmItemData("録画フォルダを開く", EpgCmds.OpenFolder));//他の画面と違う
+            ctmd.Items.Add(new CtxmItemData("録画ログを検索(_L)", EpgCmds.SearchRecLog));
             ctmd.Items.AddRange(AddAppendMenus.DeepClone());
             ctmd.Items.AddRange(AddMenuSetting.DeepClone());
 
@@ -302,6 +305,7 @@ namespace EpgTimer
             ctmd.Items.Add(new CtxmItemData("番組名でキーワード予約作成...", EpgCmds.ToAutoadd));
             ctmd.Items.Add(new CtxmItemData("追っかけ再生", EpgCmds.Play));
             ctmd.Items.Add(new CtxmItemData("録画フォルダを開く", EpgCmdsEx.OpenFolderMenu));
+            ctmd.Items.Add(new CtxmItemData("録画ログを検索(_L)", EpgCmds.SearchRecLog));
             ctmd.Items.AddRange(AddAppendMenus.DeepClone());
             ctmd.Items.AddRange(AddAppendTagMenus.DeepClone());
             ctmd.Items.Add(new CtxmItemData(cm_Separator));
@@ -324,6 +328,8 @@ namespace EpgTimer
             ctmd.Items.Add(new CtxmItemData("番組名で再検索(別ウィンドウ)", EpgCmds.ReSearch2));
             ctmd.Items.Add(new CtxmItemData("追っかけ再生", EpgCmds.Play));
             ctmd.Items.Add(new CtxmItemData("録画フォルダを開く", EpgCmdsEx.OpenFolderMenu));
+            ctmd.Items.Add(new CtxmItemData("録画ログを検索(_L)", EpgCmds.SearchRecLog));
+            ctmd.Items.Add(new CtxmItemData("ジャンル登録(_G)", EpgCmds.SetGenre));
             ctmd.Items.AddRange(AddAppendMenus.DeepClone());
             ctmd.Items.AddRange(AddAppendTagMenus.DeepClone());
             ctmd.Items.AddRange(AddMenuSetting.DeepClone());

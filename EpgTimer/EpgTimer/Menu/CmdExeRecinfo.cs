@@ -83,5 +83,22 @@ namespace EpgTimer
                 menu.ToolTip = path;
             }
         }
+        protected override void mc_SearchRecLog(object sender, ExecutedRoutedEventArgs e)
+        {
+            this.recLogWindow.showResult(dataList[0]);
+            IsCommandExecuted = true;
+        }
+        RecLogWindow recLogWindow
+        {
+            get
+            {
+                if (this._recLogWindow == null)
+                {
+                    this._recLogWindow = new RecLogWindow(Window.GetWindow(this.Owner));
+                }
+                return this._recLogWindow;
+            }
+        }
+        RecLogWindow _recLogWindow = null;
     }
 }

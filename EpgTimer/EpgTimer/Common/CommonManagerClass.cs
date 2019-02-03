@@ -1006,6 +1006,30 @@ namespace EpgTimer
 
             return setInfo.Where(info => info.ViewServiceList.Count != 0).ToList();
         }
+        
+        public static Paragraph createHyperLink(string text)
+        {
+            int searchFrom = 0;
+            Paragraph para = new Paragraph();
+            string rtext = ReplaceText(text, ReplaceUrlDictionary);
+            if (rtext.Length == text.Length)
+            {
+                for (Match m = Regex.Match(rtext, @"https?://[0-9A-Za-z!#$%&'()~=@;:?_+\-*/.]+"); m.Success; m = m.NextMatch())
+                {
+                    para.Inlines.Add(text.Substring(searchFrom, m.Index - searchFrom));
+                    Hyperlink h = new Hyperlink(new Run(text.Substring(m.Index, m.Length)));
+                    h.MouseLeftButtonDown += new MouseButtonEventHandler(h_MouseLeftButtonDown);
+                    h.Foreground = Brushes.Blue;
+                    h.Cursor = Cursors.Hand;
+                    h.NavigateUri = new Uri(m.Value);
+                    para.Inlines.Add(h);
+                    searchFrom = m.Index + m.Length;
+                }
+            }
+            para.Inlines.Add(text.Substring(searchFrom));
+
+            return para;
+        }
 
         static void h_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {

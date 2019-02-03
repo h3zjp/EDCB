@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System;
+using System.Windows;
 
 namespace EpgTimer
 {
@@ -7,5 +8,13 @@ namespace EpgTimer
     /// </summary>
     public partial class App : Application
     {
+
+        App() {
+#if DEBUG
+            System.Diagnostics.DefaultTraceListener dtl = (System.Diagnostics.DefaultTraceListener)System.Diagnostics.Debug.Listeners["Default"];
+            dtl.LogFileName = Environment.CurrentDirectory + "\\_DEBUG_LOG.txt";
+#endif
+        }
+
     }
 }

@@ -33,6 +33,12 @@ TextOptions.TextFormattingMode="Display"
                     <local:AutoAddView x:Name="autoAddView" />
                 </TabItem>
                 <TabItem Header="番組表" Name="tabItem_epg" />
+                <TabItem Header="録画ログ" Name="tabItem_recLog">
+                    <local:RecLogView x:Name="recLogView" />
+                </TabItem>
+                <TabItem Header="検索ログ" Name="tabItem_searchLog">
+                    <local:SearchLogView x:Name="searchLogView" />
+                </TabItem>
             </TabControl>
             <DockPanel>
                 <TabControl Name="tabEpgDummy" DockPanel.Dock="Top" Visibility="Hidden" />

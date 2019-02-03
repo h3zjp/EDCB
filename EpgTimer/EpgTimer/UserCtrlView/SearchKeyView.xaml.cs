@@ -108,6 +108,16 @@ namespace EpgTimer
             checkBox_setWithoutSearchKeyWord.IsChecked = Settings.Instance.SetWithoutSearchKeyWord;
         }
 
+        public void setGenre(ContentKindInfo cki0)
+        {
+            var key = cki0.Data.Key;
+            if (listBox_content.Items.OfType<ContentKindInfo>().Any(item => item.Data.Key == key) == true)
+            { return; }
+
+            listBox_content.ScrollIntoViewLast(cki0);
+            CheckListBox(listBox_content);
+        }
+
         public void SetData(object data) { SetSearchKey(data as EpgSearchKeyInfo); }
         public object GetData() { return GetSearchKey(); }
         public IEnumerable<PresetItem> DefPresetList() { return Settings.Instance.SearchPresetList.DeepClone(); }

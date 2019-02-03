@@ -753,6 +753,9 @@ namespace EpgTimer
                 }
             }
             AttendantWindow.UpdatesPinned();
+
+            recLogView.Init(this);
+            searchLogView.Init(recLogView);
         }
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
@@ -836,6 +839,10 @@ namespace EpgTimer
                 }
                 foreach (Window win in Application.Current.Windows)
                 {
+                    // ToolWindow は触らない (InfoWindow用)
+                    if (win.WindowStyle == WindowStyle.ToolWindow || win.WindowStyle == WindowStyle.None)
+                        continue;
+
                     win.Visibility = Visibility.Visible;
                 }
                 AttendantWindow.UpdatesPinned();
@@ -967,6 +974,20 @@ namespace EpgTimer
                         }
                         e.Handled = true;
                         break;
+                    case Key.D6:
+                        if (e.IsRepeat == false)
+                        {
+                            this.tabItem_recLog.IsSelected = true;
+                        }
+                        e.Handled = true;
+                        break;
+                    case Key.D7:
+                        if (e.IsRepeat == false)
+                        {
+                            this.tabItem_searchLog.IsSelected = true;
+                        }
+                        e.Handled = true;
+                        break;
                 }
             }
         }
@@ -1025,6 +1046,7 @@ namespace EpgTimer
             ChgReserveWindow.UpdatesInfo();
             RecInfoDescWindow.UpdatesInfo();
             NotifyLogWindow.UpdatesInfo();
+            searchLogView.RefreshSetting();
         }
 
         public void RefreshMenu()
@@ -1449,7 +1471,10 @@ namespace EpgTimer
                     break;
             }
 
-            if (err != ErrCode.CMD_SUCCESS) StatusManager.StatusNotifyAppend("情報更新中にエラー発生 < ");
+			recLogView.update((UpdateNotifyItem)status.notifyID);
+            searchLogView.update((UpdateNotifyItem)status.notifyID);
+
+			if (err != ErrCode.CMD_SUCCESS) StatusManager.StatusNotifyAppend("情報更新中にエラー発生 < ");
             if (notifyLogWindowUpdate == true) NotifyLogWindow.UpdatesInfo();
         }
 

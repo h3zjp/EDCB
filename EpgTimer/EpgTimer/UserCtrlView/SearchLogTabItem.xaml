@@ -1,0 +1,640 @@
+﻿<UserControl x:Class="EpgTimer.UserCtrlView.SearchLogTabItem"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:EpgTimer.UserCtrlView"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="1200" Loaded="UserControl_Loaded" IsVisibleChanged="UserControl_IsVisibleChanged">
+    <DockPanel Background="White">
+        <DockPanel  DockPanel.Dock="Left" x:Name="panel_Side_Left" Width="360">
+            <DockPanel DockPanel.Dock="Bottom" x:Name="panel_Progress_Search" Height="25" Visibility="Collapsed">
+                <Label DockPanel.Dock="Left" Width="100" HorizontalAlignment="Center" VerticalAlignment="Center">検索結果更新中</Label>
+                <ProgressBar x:Name="progressBar_Search" />
+            </DockPanel>
+            <DockPanel DockPanel.Dock="Bottom" x:Name="panel_Progress_DB" Height="25" Visibility="Collapsed">
+                <Label DockPanel.Dock="Left" Width="100" HorizontalAlignment="Center" VerticalAlignment="Center">データベース更新中</Label>
+                <ProgressBar x:Name="progressBar_DB" />
+            </DockPanel>
+            <DockPanel x:Name="panel_Editor_SerachLog" DockPanel.Dock="Top" Width="360">
+                <!-- Editor Panel -->
+                <DockPanel DockPanel.Dock="Left" x:Name="panel_Editor" Visibility="Collapsed">
+                    <DockPanel  DockPanel.Dock="Bottom" Height="27">
+                        <Button x:Name="button_Editor_UpdateSearchLogItem" BorderBrush="#0000FF" BorderThickness="1"  Width="150" Click="button_Editor_UpdateSearchLogItem_Click">追加</Button>
+                        <Button x:Name="button_Editor_Search" Width="120" Click="button_Editor_Search_Click">検索</Button>
+                        <Button x:Name="button_Editor_Cancel" Click="button_Editor_Cancel_Click">キャンセル</Button>
+                    </DockPanel>
+                    <Border DockPanel.Dock="Bottom" x:Name="border_Edit_Scramble" BorderBrush="Orange" BorderThickness="1" Margin="1" Height="25">
+                        <StackPanel Orientation="Horizontal">
+                            <Label Width="100" Padding="3,0,0,0" Background="WhiteSmoke" VerticalContentAlignment="Center">スクランブル放送</Label>
+                            <RadioButton Margin="4" x:Name="radioButton_free_1" IsChecked="True" Click="checkBox_Editor_Click">有料・無料</RadioButton>
+                            <RadioButton Margin="4" x:Name="radioButton_free_3" Click="checkBox_Editor_Click">有料のみ</RadioButton>
+                            <RadioButton Margin="4" x:Name="radioButton_free_2" Click="checkBox_Editor_Click">無料のみ</RadioButton>
+                        </StackPanel>
+                    </Border>
+                    <Border DockPanel.Dock="Top" BorderBrush="DodgerBlue" BorderThickness="1" Margin="1, 1, 1, 0" Height="25">
+                        <DockPanel Margin="1" >
+                            <Label  DockPanel.Dock="Left" Width="65" Background="#EEEEEE" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">検索ログ名</Label>
+                            <TextBox x:Name="textBox_Editor_SeachLogName" Width="180" IsEnabled="False" TextChanged="textBox_Editor_TextChanged"/>
+                            <CheckBox x:Name="checkBox_Editor_SearchLogName" Margin="5, 3
+                                          , 2, 0" Content="検索ワードを使用" IsChecked="True" Click="checkBox_Editor_Click" Checked="checkBox_Editor_SearchLogName_Checked" Unchecked="checkBox_Editor_SearchLogName_Unchecked"/>
+                        </DockPanel>
+                    </Border>
+                    <Border DockPanel.Dock="Top" x:Name="border_Edit_SearchWord" BorderBrush="DarkSeaGreen" BorderThickness="1" Margin="1">
+                        <StackPanel>
+                            <DockPanel Margin="1,1,1,0" Height="25">
+                                <Label  DockPanel.Dock="Left" Width="65" Background="#EEEEEE" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">検索ワード</Label>
+                                <TextBox x:Name="textBox_Editor_AndKey" TextChanged="textBox_Editor_AndKey_TextChanged" />
+                            </DockPanel>
+                            <DockPanel Margin="1,1,1,0" Height="25">
+                                <Label  DockPanel.Dock="Left" Width="65" Background="#EEEEEE" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">NOTワード</Label>
+                                <TextBox x:Name="textBox_Editor_NotKey" TextChanged="textBox_Editor_TextChanged" />
+                            </DockPanel>
+                            <StackPanel Margin="7,3,7,3"  Orientation="Horizontal">
+                                <StackPanel Width="170">
+                                    <CheckBox x:Name="checkBox_Editor_regExpFlag" Margin="2" Click="checkBox_Editor_Click">正規表現モード</CheckBox>
+                                    <CheckBox x:Name="checkBox_Editor_titleOnlyFlag" Margin="2" Click="checkBox_Editor_Click">番組名のみ検索対象とする</CheckBox>
+                                </StackPanel>
+                                <StackPanel >
+                                    <CheckBox x:Name="checkBox_Editor_aimaiFlag" Margin="2" Click="checkBox_Editor_Click">あいまい検索</CheckBox>
+                                    <CheckBox x:Name="checkBox_Editor_caseFlag" Margin="2" Click="checkBox_Editor_Click">大小文字の区別をする</CheckBox>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <DockPanel DockPanel.Dock="Top">
+                        <DockPanel DockPanel.Dock="Right" x:Name="panel_Content_Service" Width="180">
+                            <Border DockPanel.Dock="Top" Height="150" BorderBrush="DarkSalmon" BorderThickness="1" Margin="0,0,1,0">
+                                <DockPanel >
+                                    <StackPanel DockPanel.Dock="top" Orientation="Horizontal" Background="#EEEEEE" Height="25">
+                                        <Label  Width="100" Padding="5,0,0,0" VerticalContentAlignment="Center">ジャンル</Label>
+                                        <Border Background="WhiteSmoke" Margin="0,5,0,0" Width="75">
+                                            <CheckBox x:Name="checkBox_Editor_notContent"  Margin="2" Content="NOT扱い" Click="checkBox_Editor_Click"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <ComboBox DockPanel.Dock="Top" x:Name="comboBox_Editor_Content" DropDownClosed="comboBox_Editor_Content_DropDownClosed" />
+                                    <ListBox x:Name="listBox_Editor_Content" KeyDown="listBox_Editor_Content_KeyDown" SelectionMode="Extended" DisplayMemberPath="ListBoxView">
+                                        <ListBox.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem x:Name="menu_listBox_content" Header="削除 (_D)" Click="menu_listBox_content_Click" ToolTip="Del" />
+                                            </ContextMenu>
+                                        </ListBox.ContextMenu>
+                                    </ListBox>
+                                </DockPanel>
+                            </Border>
+                            <Border Margin="0,1,1,0" BorderBrush="SlateBlue" BorderThickness="1">
+                                <DockPanel>
+                                    <DockPanel DockPanel.Dock="Top" Background="#EEEEEE" Height="25">
+                                        <Label DockPanel.Dock="Left" Width="100" Padding="5,0,0,0" VerticalContentAlignment="Center">サービス</Label>
+                                        <ToggleButton x:Name="toggleButton_Editor_Service" Margin="0,5,0,0" Checked="toggleButton_Editor_Service_Checked" Unchecked="toggleButton_Editor_Service_Unchecked">全て選択</ToggleButton>
+                                    </DockPanel>
+                                    <TabControl x:Name="tabControl_Edit_Service" KeyDown="tabControl_Edit_Service_KeyDown">
+                                        <TabControl.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem  x:Name="menu_Service_Hide" Click="menu_Service_Hide_Click" Header="非表示(_H)" />
+                                            </ContextMenu>
+                                        </TabControl.ContextMenu>
+                                        <TabItem x:Name="tab_Teta" Header="地デジ">
+                                            <ListView  Name="listView_service_Tera" SelectionMode="Extended" ItemsSource="{Binding}">
+                                                <ListView.View>
+                                                    <GridView>
+                                                        <GridViewColumn>
+                                                            <GridViewColumn.Header>
+                                                                <GridViewColumnHeader>
+                                                                    <CheckBox Name="checkBox_Editor_Tere" Checked="checkBox_Editor_Tere_Checked" Unchecked="checkBox_Editor_Tere_Unchecked" Click="checkBox_Editor_Click"/>
+                                                                </GridViewColumnHeader>
+                                                            </GridViewColumn.Header>
+                                                            <GridViewColumn.CellTemplate>
+                                                                <DataTemplate>
+                                                                    <CheckBox IsChecked="{Binding Path=IsSelected}" Click="checkBox_Editor_Click"/>
+                                                                </DataTemplate>
+                                                            </GridViewColumn.CellTemplate>
+                                                        </GridViewColumn>
+                                                        <GridViewColumn DisplayMemberBinding="{Binding Path=ServiceName}" >
+                                                            <GridViewColumn.Header>
+                                                                <GridViewColumnHeader Content="サービス名" HorizontalContentAlignment="Left" Width="160"/>
+                                                            </GridViewColumn.Header>
+                                                        </GridViewColumn>
+                                                        <GridViewColumn DisplayMemberBinding="{Binding Path=SID}" >
+                                                            <GridViewColumn.Header>
+                                                                <GridViewColumnHeader Content="ID" HorizontalContentAlignment="Left" Width="50"/>
+                                                            </GridViewColumn.Header>
+                                                        </GridViewColumn>
+                                                    </GridView>
+                                                </ListView.View>
+                                            </ListView>
+                                        </TabItem>
+                                        <TabItem x:Name="tab_BS" Header=" BS ">
+                                            <ListView  Name="listView_service_BS" SelectionMode="Extended" ItemsSource="{Binding}">
+                                                <ListView.View>
+                                                    <GridView>
+                                                        <GridViewColumn>
+                                                            <GridViewColumn.Header>
+                                                                <GridViewColumnHeader >
+                                                                    <CheckBox Name="checkBox_Editor_BS" Checked="checkBox_BS_Checked" Unchecked="checkBox_BS_Unchecked" Click="checkBox_Editor_Click"/>
+                                                                </GridViewColumnHeader>
+                                                            </GridViewColumn.Header>
+                                                            <GridViewColumn.CellTemplate>
+                                                                <DataTemplate>
+                                                                    <CheckBox IsChecked="{Binding Path=IsSelected}" />
+                                                                </DataTemplate>
+                                                            </GridViewColumn.CellTemplate>
+                                                        </GridViewColumn>
+                                                        <GridViewColumn DisplayMemberBinding="{Binding Path=ServiceName}" >
+                                                            <GridViewColumn.Header>
+                                                                <GridViewColumnHeader Content="サービス名" HorizontalContentAlignment="Left"/>
+                                                            </GridViewColumn.Header>
+                                                        </GridViewColumn>
+                                                        <GridViewColumn DisplayMemberBinding="{Binding Path=SID}" >
+                                                            <GridViewColumn.Header>
+                                                                <GridViewColumnHeader Content="SID" HorizontalContentAlignment="Left" Width="50"/>
+                                                            </GridViewColumn.Header>
+                                                        </GridViewColumn>
+                                                    </GridView>
+                                                </ListView.View>
+                                            </ListView>
+                                        </TabItem>
+                                        <TabItem x:Name="tab_CS" Header=" CS ">
+                                            <ListView  Name="listView_service_CS" SelectionMode="Extended" ItemsSource="{Binding}">
+                                                <ListView.View>
+                                                    <GridView>
+                                                        <GridViewColumn>
+                                                            <GridViewColumn.Header>
+                                                                <GridViewColumnHeader>
+                                                                    <CheckBox Name="checkBox_Editor_CS" Checked="checkBox_CS_Checked" Unchecked="checkBox_CS_Unchecked" Click="checkBox_Editor_Click"/>
+                                                                </GridViewColumnHeader>
+                                                            </GridViewColumn.Header>
+                                                            <GridViewColumn.CellTemplate>
+                                                                <DataTemplate>
+                                                                    <CheckBox IsChecked="{Binding Path=IsSelected}" />
+                                                                </DataTemplate>
+                                                            </GridViewColumn.CellTemplate>
+                                                        </GridViewColumn>
+                                                        <GridViewColumn DisplayMemberBinding="{Binding Path=ServiceName}" >
+                                                            <GridViewColumn.Header>
+                                                                <GridViewColumnHeader Content="サービス名" HorizontalContentAlignment="Left"/>
+                                                            </GridViewColumn.Header>
+                                                        </GridViewColumn>
+                                                        <GridViewColumn DisplayMemberBinding="{Binding Path=SID}" >
+                                                            <GridViewColumn.Header>
+                                                                <GridViewColumnHeader Content="SID" HorizontalContentAlignment="Left" Width="50"/>
+                                                            </GridViewColumn.Header>
+                                                        </GridViewColumn>
+                                                    </GridView>
+                                                </ListView.View>
+                                            </ListView>
+                                        </TabItem>
+                                    </TabControl>
+                                </DockPanel>
+                            </Border>
+                        </DockPanel>
+                        <DockPanel>
+                            <Border DockPanel.Dock="Top" x:Name="border_Edit_Date" Margin="1,0,1,0" Height="200" BorderBrush="DarkTurquoise" BorderThickness="1">
+                                <DockPanel>
+                                    <StackPanel  DockPanel.Dock="Top" Orientation="Horizontal" Background="#EEEEEE" Height="25">
+                                        <Label Width="100" Padding="3,0,0,0" VerticalContentAlignment="Center">時間絞り込み</Label>
+                                        <Border Background="WhiteSmoke" Margin="0,5,0,0" Width="75">
+                                            <CheckBox x:Name="checkBox_Editor_notDate" Margin="2" Content="NOT扱い" Click="checkBox_Editor_Click"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <Border DockPanel.Dock="Top" BorderBrush="LightGray" BorderThickness="1">
+                                        <StackPanel  >
+                                            <DockPanel >
+                                                <ToggleButton x:Name="toggleButtot_Editor_Mon" Width="25">月</ToggleButton>
+                                                <ToggleButton x:Name="toggleButtot_Editor_Tue" Width="25">火</ToggleButton>
+                                                <ToggleButton x:Name="toggleButtot_Editor_Wed" Width="25">水</ToggleButton>
+                                                <ToggleButton x:Name="toggleButtot_Editor_Thu" Width="25">木</ToggleButton>
+                                                <ToggleButton x:Name="toggleButtot_Editor_Fri" Width="25">金</ToggleButton>
+                                                <ToggleButton x:Name="toggleButtot_Editor_Sat" Width="25">土</ToggleButton>
+                                                <ToggleButton x:Name="toggleButtot_Editor_Sun">日</ToggleButton>
+                                            </DockPanel>
+                                            <DockPanel Height="22">
+                                                <TextBox DockPanel.Dock="Left" x:Name="textBox_Edit_Time_Start" Width="50" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" PreviewKeyDown="textBox_Edit_Time_PreviewKeyDown">01:05</TextBox>
+                                                <Label DockPanel.Dock="Left" Padding="5,0,5,0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">～</Label>
+                                                <TextBox DockPanel.Dock="Left" x:Name="textBox_Edit_Time_End" Width="50" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" PreviewKeyDown="textBox_Edit_Time_PreviewKeyDown">23:59</TextBox>
+                                                <Button x:Name="button_Editor_AddDate" Click="button_Editor_AddDate_Click">追加</Button>
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border DockPanel.Dock="Bottom" Height="23" Margin="0,1,0,1" BorderBrush="LightGray" BorderThickness="1" ToolTip="放送時間の長さ（０で無制限）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBox  x:Name="textBox_Editor_chkDurationMin" Margin="5,0,0,0" Width="40" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" TextChanged="textBox_Editor_TextChanged">0</TextBox>
+                                            <Label Padding="1, 0, 7,0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">分以上</Label>
+                                            <TextBox x:Name="textBox_Editor_chkDurationMax" Width="40" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" TextChanged="textBox_Editor_TextChanged">0</TextBox>
+                                            <Label Padding="1,0,0,0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">分以下</Label>
+                                        </StackPanel>
+                                    </Border>
+                                    <ListBox x:Name="listBox_Editor_Date" KeyDown="listBox_Editor_Date_KeyDown" SelectionMode="Extended">
+                                        <ListBox.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem x:Name="menu_Editor_Date_Delete" Header="削除(_D)" Click="menu_Editor_Date_Delete_Click" />
+                                            </ContextMenu>
+                                        </ListBox.ContextMenu>
+                                    </ListBox>
+                                </DockPanel>
+                            </Border>
+                            <Border x:Name="border_Edit_NotWord" Margin="1,0,1,0" BorderBrush="Violet" BorderThickness="1" ContextMenuOpening="border_Edit_NotWord_ContextMenuOpening">
+                                <Border.ContextMenu>
+                                    <ContextMenu x:Name="menu_Edit_NotWord_Border">
+                                        <MenuItem x:Name="menu_Edit_NotWord_Border_Restore" Header="パネルサイズを元に戻す(_R)" Click="menu_Edit_NotWord_Border_Restore_Click" />
+                                        <MenuItem x:Name="menu_Edit_NotWord_Border_Maximize" Header="パネルサイズを拡大(_X)" Click="menu_Edit_NotWord_Border_Maximize_Click" />
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <DockPanel>
+                                    <DockPanel DockPanel.Dock="Bottom" Height="25">
+                                        <Button DockPanel.Dock="Right" x:Name="button_Editor_Filter_Genre" Width="40" Click="button_Editor_Filter_Genre_Click">追加</Button>
+                                        <ComboBox x:Name="comboBox_Editor_Filter_Genre" />
+                                    </DockPanel>
+                                    <DockPanel DockPanel.Dock="Bottom" Height="25">
+                                        <Button DockPanel.Dock="Right" x:Name="button_Edit_NotWord" Width="40" Click="button_Edit_NotWord_Click">追加</Button>
+                                        <TextBox x:Name="textBox_Edit_NotWord"/>
+                                    </DockPanel>
+                                    <ListView x:Name="listView_Edit_NotWord" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden">
+                                        <ListView.Resources>
+                                            <ContextMenu x:Key="cm_NotWord">
+                                                <MenuItem x:Name="menu_Edit_NotWord_Delete" Header="削除(_D)" Click="menu_Edit_NotWord_Delete_Click" InputGestureText="Delete"/>
+                                                <MenuItem x:Name="menu_Edit_NotWord_EditWord" Header="Notワードを変更" Click="menu_Edit_NotWord_EditWord_Click" InputGestureText="Enter" />
+                                            </ContextMenu>
+                                            <Style TargetType="ListViewItem">
+                                                <Setter Property="ContextMenu" Value="{DynamicResource cm_NotWord}" />
+                                                <Setter Property="ToolTip" Value="{Binding word}" />
+                                                <EventSetter Event="KeyDown" Handler="notWordItem_KeyDown" />
+                                                <EventSetter Event="MouseDoubleClick" Handler="notWordItem_MouseDoubleClick" />
+                                            </Style>
+                                        </ListView.Resources>
+                                        <ListView.View>
+                                            <GridView x:Name="gridView_Edit_NotWord">
+                                                <GridViewColumn x:Name="gridViewColumn_Edit_NotWord_Word" DisplayMemberBinding="{Binding Path=displayWord}" Width="100">
+                                                    <GridViewColumn.Header>
+                                                        <GridViewColumnHeader Content="Notワード" HorizontalContentAlignment="Center" />
+                                                    </GridViewColumn.Header>
+                                                </GridViewColumn>
+                                                <GridViewColumn x:Name="gridViewColumn_Edit_NotWord_IsTitleOnly" Width="35">
+                                                    <GridViewColumn.Header>
+                                                        <GridViewColumnHeader HorizontalContentAlignment="Center" >
+                                                            <CheckBox x:Name="checkBox_Edit_NotWord_IsTitleOnly_Header" ToolTip="番組名のみ検索対象とする" Click="checkBox_Edit_NotWord_IsTitleOnly_Header_Click">T</CheckBox>
+                                                        </GridViewColumnHeader>
+                                                    </GridViewColumn.Header>
+                                                    <GridViewColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <DataTemplate.Triggers>
+                                                                <DataTrigger Binding="{Binding Path=isFilteringByGanre}" Value="True">
+                                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                                </DataTrigger>
+                                                            </DataTemplate.Triggers>
+                                                            <CheckBox x:Name="checkBox_Edit_NotWord_IsTitleOnly" IsChecked="{Binding Path=isTitleOnly}" Click="checkBox_Editor_Click" Checked="checkBox_Edit_NotWord_IsTitleOnly_Checked" Unchecked="checkBox_Edit_NotWord_IsTitleOnly_Unchecked" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                                                        </DataTemplate>
+                                                    </GridViewColumn.CellTemplate>
+                                                </GridViewColumn>
+                                                <GridViewColumn x:Name="gridViewColumn_Edit_NotWord_IsRegex" Width="35">
+                                                    <GridViewColumn.Header>
+                                                        <GridViewColumnHeader HorizontalContentAlignment="Center" >
+                                                            <CheckBox x:Name="checkBox_Edit_NotWord_IsRegex_Header" ToolTip="正規表現モード" Click="checkBox_Edit_NotWord_IsRegex_Header_Click">R</CheckBox>
+                                                        </GridViewColumnHeader>
+                                                    </GridViewColumn.Header>
+                                                    <GridViewColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <DataTemplate.Triggers>
+                                                                <DataTrigger Binding="{Binding Path=isFilteringByGanre}" Value="True">
+                                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                                </DataTrigger>
+                                                            </DataTemplate.Triggers>
+                                                            <CheckBox x:Name="checkBox_Edit_NotWord_IsRegex" IsChecked="{Binding Path=isRegex}" Click="checkBox_Editor_Click" Checked="checkBox_Edit_NotWord_IsRegex_Checked" Unchecked="checkBox_Edit_NotWord_IsRegex_Unchecked" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                                                        </DataTemplate>
+                                                    </GridViewColumn.CellTemplate>
+                                                </GridViewColumn>
+                                            </GridView>
+                                        </ListView.View>
+                                    </ListView>
+                                </DockPanel>
+                            </Border>
+                        </DockPanel>
+                    </DockPanel>
+                </DockPanel>
+                <!-- SearchLog Panel -->
+                <DockPanel DockPanel.Dock="Left" x:Name="panel_SearchLog" Visibility="Visible">
+                    <Border DockPanel.Dock="Top" x:Name="border_ChangeHeader" BorderBrush="Yellow" BorderThickness="2" Visibility="Collapsed">
+                        <DockPanel Height="27">
+                            <TextBox x:Name="textBox_TabHeader" Width="200" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">タブ１</TextBox>
+                            <Button DockPanel.Dock="Right" x:Name="button_ChangeTabHeader_Close" Width="55" Click="button_ChangeTabHeader_Close_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Foreground="Firebrick">X</TextBlock>
+                                    <TextBlock>閉じる</TextBlock>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="button_ChangeTabHeader" Click="button_ChangeTabHeader_Click">タブヘッダ変更</Button>
+                        </DockPanel>
+                    </Border>
+                    <DockPanel DockPanel.Dock="Top" Height="27">
+                        <Button DockPanel.Dock="Left" x:Name="button_SearchLog_AddNew" Width="175" Click="button_SearchLog_AddNew_Click" VerticalAlignment="Stretch">新規追加</Button>
+                        <Button x:Name="button_SearchLog_Update" Click="button_SearchLog_Update_Click" VerticalAlignment="Stretch">全て検索</Button>
+                    </DockPanel>
+                    <local:ListViewSrt x:Name="listView_SearchLog" SelectionMode="Extended" ItemsSource="{Binding}" AllowDrop="True" ScrollViewer.HorizontalScrollBarVisibility="Hidden" KeyDown="listView_SearchLog_KeyDown" SelectionChanged="listView_SearchLog_SelectionChanged">
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem x:Name="menu_SearchLog_AddNew" Header="新規追加" Click="menu_SearchLog_AddNew_Click"/>
+                                <MenuItem x:Name="menu_SearchLog_SearchAll" Header="全て検索" Click="menu_SearchLog_SearchAll_Click"/>
+                            </ContextMenu>
+                        </ListView.ContextMenu>
+                        <ListView.Resources>
+                            <ContextMenu x:Key="itemMenu" x:Name="menu_SearchLog">
+                                <MenuItem Name="menu_SearchLog_Edit" Header="変更 (_C)" Click="menu_SearchLog_Edit_Click" InputGestureText="Enter" />
+                                <MenuItem Name="menu_SearchLog_Del" Header="削除 (_D)" Click="menu_SearchLog_Del_Click" InputGestureText="Delete" />
+                            </ContextMenu>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="ContextMenu" Value="{DynamicResource itemMenu}" />
+                                <Setter Property="Height" Value="19" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="BorderThickness" Value="5,0,0,1" />
+                                <Setter Property="BorderBrush" Value="{Binding borderBrush}" />
+                                <EventSetter Event="ContextMenuOpening" Handler="listViewItem_SearchLog_ContextMenuOpening" />
+                                <EventSetter Event="PreviewMouseDown" Handler="listViewItem_SearchLog_PreviewMouseDown" />
+                                <EventSetter Event="MouseEnter" Handler="listViewItem_SearchLog_MouseEnter" />
+                                <EventSetter Event="MouseDoubleClick" Handler="listViewItem_SearchLog_MouseDoubleClick" />
+                            </Style>
+                        </ListView.Resources>
+                        <ListView.View>
+                            <GridView x:Name="gridView_SeachLog">
+                                <GridViewColumn DisplayMemberBinding="{Binding Path=name}" Width="130">
+                                    <GridViewColumn.Header>
+                                        <GridViewColumnHeader Content="検索ログ名"  Tag="name"/>
+                                    </GridViewColumn.Header>
+                                </GridViewColumn>
+                                <GridViewColumn Width="40">
+                                    <GridViewColumn.Header>
+                                        <GridViewColumnHeader Content="New" HorizontalContentAlignment="Center" Tag="result_New"/>
+                                    </GridViewColumn.Header>
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Path=result_New}" HorizontalAlignment="Right" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Width="40">
+                                    <GridViewColumn.Header>
+                                        <GridViewColumnHeader Content="Total" HorizontalContentAlignment="Center" Tag="result_Total"/>
+                                    </GridViewColumn.Header>
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Path=result_Total}" TextAlignment="Right"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn DisplayMemberBinding="{Binding Path=andKey}" Width="150">
+                                    <GridViewColumn.Header>
+                                        <GridViewColumnHeader Content="検索ワード" HorizontalContentAlignment="Center" Tag="andKey"/>
+                                    </GridViewColumn.Header>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </local:ListViewSrt>
+                </DockPanel>
+            </DockPanel>
+        </DockPanel>
+        <!--Search Result Panel -->
+        <DockPanel x:Name="panel_SearchResult">
+            <DockPanel DockPanel.Dock="Top" Height="27">
+                <ToggleButton DockPanel.Dock="Left" x:Name="toggleButton_Result_ShowConfirmed" Width="150" Checked="toggleButton_Result_ShowConfirmed_Checked" Unchecked="toggleButton_Result_ShowConfirmed_Unchecked">チェック済みアイテムを表示</ToggleButton>
+                <Button DockPanel.Dock="Left" x:Name="button_Result_SearchTitleByRecLog" Width="150" Click="button_Result_SearchTitleByRecLog_Click" VerticalAlignment="Stretch">番組名を録画ログ検索</Button>
+                <ToggleButton DockPanel.Dock="Left" x:Name="toggleButton_ServieEditMode" Width="150" Checked="toggleButton_ServieEditMode_Checked" Unchecked="toggleButton_ServieEditMode_Unchecked" Click="toggleButton_ServieEditor_Click" ToolTip="検索条件のサービスだけを簡単に編集できます">サービス編集モード</ToggleButton>
+                <Button x:Name="button_Result_Clear" Width="150" Click="button_Result_Clear_Click" VerticalAlignment="Stretch">クリア</Button>
+                <Button x:Name="button_Result_Help" Width="150" Click="button_Result_Help_Click" VerticalAlignment="Stretch">ヘルプ</Button>
+                <Label  />
+            </DockPanel>
+            <!-- Service Edit Panel -->
+            <DockPanel DockPanel.Dock="Left" x:Name="panel_serviceEditor" Visibility="Collapsed">
+                <Border DockPanel.Dock="Left" BorderThickness="1" BorderBrush="Silver">
+                    <DockPanel Visibility="Visible">
+                        <DockPanel.Resources>
+                            <ResourceDictionary>
+                                <Style x:Key="lstvw_hd_chkbox" TargetType="GridViewColumnHeader">
+                                    <Setter Property="Width" Value="25" />
+                                    <Setter Property="HorizontalAlignment" Value="Center" />
+                                </Style>
+                                <Style x:Key="lstvw_hd_srvName" TargetType="GridViewColumnHeader">
+                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                    <Setter Property="Width" Value="160" />
+                                </Style>
+                                <DataTemplate x:Key="lstvw_hd_srvId">
+                                    <TextBlock Text="ID" TextAlignment="Center" Width="50"/>
+                                </DataTemplate>
+                                <DataTemplate x:Key="lstvw_chkbox">
+                                    <CheckBox IsChecked="{Binding Path=IsSelected}" Click="checkBox_Editor_Click"/>
+                                </DataTemplate>
+                                <DataTemplate x:Key="lstvw_srvId">
+                                    <TextBlock Text="{Binding Path=SID}" TextAlignment="Right" />
+                                </DataTemplate>
+                            </ResourceDictionary>
+                        </DockPanel.Resources>
+                        <DockPanel DockPanel.Dock="Top" Height="30" Visibility="Visible">
+                            <ToggleButton DockPanel.Dock="Right" x:Name="toggleButton_serviceEditor_All" Margin="0,5,0,0" Width="100" Checked="toggleButton_serviceEditor_All_Checked" Unchecked="toggleButton_serviceEditor_All_Unchecked" Click="toggleButton_serviceEditor_All_Click">全て選択</ToggleButton>
+                            <Label>サービス編集内容は自動的に保存されます。</Label>
+                        </DockPanel>
+                        <Border DockPanel.Dock="Left" BorderThickness="1" BorderBrush="Silver">
+                            <DockPanel DockPanel.Dock="Left" Width="160">
+                                <ListView  Name="listView_serviceEditor_Tera" SelectionMode="Extended" ItemsSource="{Binding}" BorderThickness="0,1,0,0" BorderBrush="Silver">
+                                    <ListView.View>
+                                        <GridView>
+                                            <GridViewColumn CellTemplate="{StaticResource lstvw_chkbox}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Style="{StaticResource lstvw_hd_chkbox}">
+                                                        <CheckBox Name="checkBox_serviceEditor_Tere" Click="checkBox_servicceEditor_Tere_Click"/>
+                                                    </GridViewColumnHeader>
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn DisplayMemberBinding="{Binding Path=ServiceName}" >
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Style="{StaticResource lstvw_hd_srvName}" Content="[地デジ] サービス名" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn HeaderTemplate="{StaticResource lstvw_hd_srvId}" CellTemplate="{StaticResource  lstvw_srvId}" />
+                                        </GridView>
+                                    </ListView.View>
+                                </ListView>
+                            </DockPanel>
+                        </Border>
+                        <Border DockPanel.Dock="Left" BorderThickness="1" BorderBrush="Silver">
+                            <DockPanel DockPanel.Dock="Left" Width="160">
+                                <ListView  Name="listView_serviceEditor_BS" SelectionMode="Extended" ItemsSource="{Binding}" BorderThickness="0,1,0,0" BorderBrush="Silver">
+                                    <ListView.View>
+                                        <GridView>
+                                            <GridViewColumn CellTemplate="{StaticResource lstvw_chkbox}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Style="{StaticResource lstvw_hd_chkbox}">
+                                                        <CheckBox Name="checkBox_serviceEditor_BS" Click="checkBox_servicceEditor_BS_Click"/>
+                                                    </GridViewColumnHeader>
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn DisplayMemberBinding="{Binding Path=ServiceName}" >
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Style="{StaticResource lstvw_hd_srvName}" Content="[ BS ] サービス名" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn HeaderTemplate="{StaticResource lstvw_hd_srvId}" CellTemplate="{StaticResource  lstvw_srvId}" />
+                                        </GridView>
+                                    </ListView.View>
+                                </ListView>
+                            </DockPanel>
+                        </Border>
+                        <Border DockPanel.Dock="Left" BorderThickness="1" BorderBrush="Silver">
+                            <DockPanel DockPanel.Dock="Left" Width="160">
+                                <ListView  Name="listView_serviceEditor_CS" SelectionMode="Extended" ItemsSource="{Binding}" BorderThickness="0,1,0,0" BorderBrush="Silver">
+                                    <ListView.View>
+                                        <GridView>
+                                            <GridViewColumn CellTemplate="{StaticResource lstvw_chkbox}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Style="{StaticResource lstvw_hd_chkbox}">
+                                                        <CheckBox Name="checkBox_serviceEditor_CS" Click="checkBox_servicceEditor_CS_Click"/>
+                                                    </GridViewColumnHeader>
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn DisplayMemberBinding="{Binding Path=ServiceName}" >
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Style="{StaticResource lstvw_hd_srvName}" Content="[ CS ] サービス名" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn HeaderTemplate="{StaticResource lstvw_hd_srvId}" CellTemplate="{StaticResource  lstvw_srvId}" />
+                                        </GridView>
+                                    </ListView.View>
+                                </ListView>
+                            </DockPanel>
+                        </Border>
+                    </DockPanel>
+                </Border>
+                <Label />
+            </DockPanel>
+            <!-- EPGEventInfo Panel -->
+            <DockPanel DockPanel.Dock="Right" x:Name="panel_Epg" Width="280" Visibility="Collapsed">
+                <RichTextBox Name="richTextBox_Epg" IsReadOnly="True" ContextMenuOpening="richTextBox_Epg_ContextMenuOpening">
+                    <RichTextBox.ContextMenu>
+                        <ContextMenu x:Name="menu_Epg">
+                            <MenuItem x:Name="menu_Epg_NotWard" Header="Notワードに追加(_N)" Click="menu_Epg_NotWard_Click" />
+                            <MenuItem x:Name="menu_Epg_Copy" Header="コピー(_C)" Click="menu_Epg_Copy_Click" />
+                            <MenuItem x:Name="menu_Epg_SearchByWeb" Header="Webで検索(_W)" Click="menu_Epg_SearchByWeb_Click" />
+                        </ContextMenu>
+                    </RichTextBox.ContextMenu>
+                </RichTextBox>
+            </DockPanel>
+            <local:ListViewSrt x:Name="listView_Result" KeyDown="listView_Result_KeyDown" ContextMenuOpening="listView_Result_ContextMenuOpening" SelectionChanged="listView_Result_SelectionChanged">
+                <ListView.ContextMenu>
+                    <ContextMenu x:Name="ctxMenu_Result">
+                        <MenuItem x:Name="menu_Result_ShowConfirmed" Header="チェック済みを表示・非表示(_V)" Click="menu_Result_HideConfirmed_Click"/>
+                        <MenuItem x:Name="menu_Result_AllConfirmed" Header="全てチェック済み・解除(_B)" Click="menu_Result_AllConfirmed_Click"/>
+                    </ContextMenu>
+                </ListView.ContextMenu>
+                <ListView.Resources>
+                    <ContextMenu x:Name="ctxMenu_ReusltItem" x:Key="cm_Reuslt" Opened="ctxMenu_ReusltItem_ContextMenuOpened">
+                        <MenuItem x:Name="menu_Result_Reserve" Header="簡易予約/有効←→無効(_S)" Click="menu_Result_Reserve_Click" InputGestureText="Ctrl + S"/>
+                        <MenuItem x:Name="menu_Resutl_Delete" Header="予約削除(_D)" Click="menu_Resutl_Delete_Click" InputGestureText="Ctrl+D" />
+                        <MenuItem x:Name="menu_Resutl_AutoAdd" Header="自動予約登録(_A)" Click="menu_Resutl_AutoAdd_Click" />
+                        <MenuItem x:Name="menu_Result_OpenReserveDialog" Header="予約ダイアログ (_O) [W-Click]" Click="menu_Result_OpenReserveDialog_Click"  InputGestureText="Enter"  Tag="single"/>
+                        <MenuItem x:Name="menu_Result_RecLog" Header="録画ログ検索(_L)" Click="menu_Result_RecLog_Click" InputGestureText="中クリック"  Tag="single"/>
+                        <MenuItem x:Name="menu_Result_RecLog_ChangeStatus" Header="録画ステータス変更(_Y)" >
+                            <MenuItem x:Name="menu_Result_RecLog_ChangeStatus_NONE" Header="（無し）(_0)" Click="menu_RecLog_ChangeStatus_NONE_Click" />
+                            <MenuItem x:Name="menu_Result_RecLog_ChangeStatus_Reserve" Header="予約済み(_1)" Click="menu_RecLog_ChangeStatus_Reserve_Click"/>
+                            <MenuItem x:Name="menu_Result_RecLog_ChangeStatus_Recorded" Header="録画完了(_2)" Click="menu_RecLog_ChangeStatus_Recorded_Click"/>
+                            <MenuItem x:Name="menu_Result_RecLog_ChangeStatus_Error" Header="録画異常(_3)" Click="menu_RecLog_ChangeStatus_Error_Click"/>
+                            <MenuItem x:Name="menu_Result_RecLog_ChangeStatus_Viewed" Header="視聴済み(_4)" Click="menu_RecLog_ChangeStatus_Viewed_Click"/>
+                            <MenuItem x:Name="menu_Result_RecLog_ChangeStatus_Disabled" Header="無効登録(_5)" Click="menu_RecLog_ChangeStatus_Disabled_Click"/>
+                            <MenuItem x:Name="menu_Result_RecLog_ChangeStatus_Unknown" Header="不明(_6)" Click="menu_RecLog_ChangeStatus_Unknown_Click"/>
+                        </MenuItem>
+                        <MenuItem x:Name="menu_Result_Check" Header="チェック(_C)" Click="menu_Result_Check_Click" InputGestureText="Alt+Click"/>
+                        <MenuItem x:Name="menu_Result_NotWord"  Header="NotWordに追加(_N)" Click="menu_Result_NotWord_Click" />
+                        <MenuItem x:Name="menu_Result_SearchByWeb" Header="Webで検索(_W)" Click="menu_Result_SearchByWeb_Click" Tag="single"/>
+                        <MenuItem x:Name="menu_Result_Jump2EpgView" Header="番組表へジャンプ(_J)" Click="menu_Result_Jump2EpgView_Click" Tag="single"/>
+                        <MenuItem x:Name="menu_Result_AddGenre" Header="ジャンル登録(_G)"/>
+                        <MenuItem x:Name="menu_Result_AddGenre_NotWord" Header="Notジャンル登録(_M)"/>
+                    </ContextMenu>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="ContextMenu" Value="{DynamicResource cm_Reuslt}" />
+                        <Setter Property="Height" Value="19" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                        <Setter Property="BorderThickness" Value="5,0,0,1" />
+                        <Setter Property="BorderBrush" Value="{Binding borderBrush}" />
+                        <Setter Property="Background" Value="{Binding background}" />
+                        <EventSetter Event="ContextMenuOpening" Handler="resultItem_ContextMenuOpening"/>
+                        <EventSetter Event="PreviewMouseDown" Handler="resultItem_PreviewMouseDown" />
+                        <EventSetter  Event="MouseDoubleClick" Handler="resultItem_MouseDoubleClick" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding isVisible}" Value="False">
+                                <Setter Property="ListBoxItem.Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListView.Resources>
+                <ListView.View>
+                    <GridView x:Name="gridView_Result">
+                        <GridViewColumn Width="30">
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader HorizontalContentAlignment="Center" Tag="confirmed">
+                                    <CheckBox x:Name="checkBox_Result_Confirmed" Click="checkBox_Result_Confirmed_Click" />
+                                </GridViewColumnHeader>
+                            </GridViewColumn.Header>
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox x:Name="checkBox_ResultItem_Confirmed" IsChecked="{Binding Path=confirmed}" Click="checkBox_ResultItem_Confirmed_Click" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Width="30">
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader Content="状態" HorizontalContentAlignment="Center"  Tag="status"/>
+                            </GridViewColumn.Header>
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Path=status}" Foreground="{Binding Path=statusColor}"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn DisplayMemberBinding="{Binding Path=dateStr}">
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader Content="日時" HorizontalContentAlignment="Center" Tag="date"/>
+                            </GridViewColumn.Header>
+                        </GridViewColumn>
+                        <GridViewColumn DisplayMemberBinding="{Binding Path=timeLength}">
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader Content=" 時間" HorizontalContentAlignment="Center" Tag="timeLength"/>
+                            </GridViewColumn.Header>
+                        </GridViewColumn>
+                        <GridViewColumn DisplayMemberBinding="{Binding Path=tvProgramTitle}" Width="400">
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader Content="番組名" HorizontalContentAlignment="Left" Tag="tvProgramTitle"/>
+                            </GridViewColumn.Header>
+                        </GridViewColumn>
+                        <GridViewColumn DisplayMemberBinding="{Binding Path=networkName}" >
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader Content="ネットワーク" HorizontalContentAlignment="Left" Tag="networkName"/>
+                            </GridViewColumn.Header>
+                        </GridViewColumn>
+                        <GridViewColumn DisplayMemberBinding="{Binding Path=serviceName}" Width="100">
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader Content="サービス名" HorizontalContentAlignment="Left" Tag="serviceName"/>
+                            </GridViewColumn.Header>
+                        </GridViewColumn>
+                        <GridViewColumn Width="35">
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader Content="画質" HorizontalContentAlignment="Center" Tag="imageQuality"/>
+                            </GridViewColumn.Header>
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Path=imageQuality}" Foreground="{Binding Path=foreground_ImageQuality}" TextAlignment="Center"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn DisplayMemberBinding="{Binding Path=jyanruKey}" Width="100">
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader Content="ジャンル" HorizontalContentAlignment="Left" Tag="jyanruKey"/>
+                            </GridViewColumn.Header>
+                        </GridViewColumn>
+                        <GridViewColumn DisplayMemberBinding="{Binding Path=programContent}" Width="1000">
+                            <GridViewColumn.Header>
+                                <GridViewColumnHeader Content="番組内容" HorizontalContentAlignment="Left" Tag="programContent"/>
+                            </GridViewColumn.Header>
+                        </GridViewColumn>
+                    </GridView>
+                </ListView.View>
+            </local:ListViewSrt>
+        </DockPanel>
+    </DockPanel>
+</UserControl>

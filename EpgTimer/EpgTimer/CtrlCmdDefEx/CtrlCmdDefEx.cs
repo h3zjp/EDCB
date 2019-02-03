@@ -193,5 +193,16 @@ namespace EpgTimer
         {
             return CommonManager.Create64PgKey(obj.original_network_id, obj.transport_stream_id, obj.service_id, obj.event_id);
         }
+        /// <summary>
+        /// 放送終了
+        /// </summary>
+        /// <param name="eventInfo"></param>
+        /// <returns></returns>
+        public static bool isBroadcasted(this EpgEventInfo eventInfo)
+        {
+            if (eventInfo == null) return false;
+            //
+            return (eventInfo.start_time.AddSeconds(eventInfo.durationSec) < DateTime.Now);
+        }
     }
 }

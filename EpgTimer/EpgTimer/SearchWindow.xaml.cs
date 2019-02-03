@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -13,7 +13,7 @@ namespace EpgTimer
     public partial class SearchWindow : SearchWindowBase
     {
         public static event ViewUpdatedHandler ViewReserveUpdated = null;
-        
+
         protected override DataItemViewBase DataView { get { return mainWindow.autoAddView.epgAutoAddView; } }
         protected override string AutoAddString { get { return "キーワード予約"; } }
 
@@ -55,12 +55,12 @@ namespace EpgTimer
                 lstCtrl.SetSelectionChangedEventHandler((sender, e) => this.UpdateStatus(1));
 
                 //最初にコマンド集の初期化
-                mc = new CmdExeReserve(this);
+                mc = new CmdExeSearch(this);
                 mc.SetFuncGetSearchList(isAll => (isAll == true ? lstCtrl.dataList.ToList() : lstCtrl.GetSelectedItemsList()));
                 mc.SetFuncSelectSingleSearchData(lstCtrl.SelectSingleItem);
                 mc.SetFuncReleaseSelectedData(() => listView_result.UnselectAll());
                 mc.recSettingView = this.recSettingView;
-                
+
                 //コマンド集に無いもの
                 mc.AddReplaceCommand(EpgCmds.ReSearch, mc_Research);
                 mc.AddReplaceCommand(EpgCmds.ReSearch2, mc_Research);
@@ -107,7 +107,7 @@ namespace EpgTimer
 
                 //その他のショートカット(検索ダイアログ固有の設定)。コマンドだとコンボボックスアイテムの処理と協調しにくいので‥。
                 //searchKeyView.InputBindings.Add(new InputBinding(EpgCmds.Search, new KeyGesture(Key.Enter)));
-                searchKeyView.KeyUp += (sender, e) => { if (e.Key == Key.Enter)button_search_Click(null, null); };
+                searchKeyView.KeyUp += (sender, e) => { if (e.Key == Key.Enter) button_search_Click(null, null); };
                 listView_result.PreviewKeyDown += (sender, e) => ViewUtil.OnKyeMoveNextReserve(sender, e, DataListView);
 
                 //録画設定タブ関係の設定
@@ -255,7 +255,7 @@ namespace EpgTimer
                 {
                     SearchItem item = lstCtrl.SelectSingleItem();
                     EpgSearchKeyInfo defKey = MenuUtil.SendAutoAddKey(item.EventInfo, CmdExeUtil.IsKeyGesture(e), GetSearchKey());
-                    
+
                     if (e.Command == EpgCmds.ReSearch)
                     {
                         SetSearchKey(defKey);
@@ -354,7 +354,7 @@ namespace EpgTimer
 
         protected AutoAddMode winMode = AutoAddMode.Find;
         protected void SetViewMode(AutoAddMode mode)
-        { 
+        {
             winMode = mode;
             SetWindowTitle();
             if (mode != AutoAddMode.Change) dataID = 0;

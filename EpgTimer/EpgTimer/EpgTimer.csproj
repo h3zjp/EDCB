@@ -59,7 +59,9 @@
     <ApplicationManifest>App.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Microsoft.VisualBasic" />
     <Reference Include="System" />
+    <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
@@ -86,7 +88,10 @@
     <Compile Include="Menu\CmdHistory.cs" />
     <Compile Include="DefineClass\TextBoxWithReadOnlyEffect.cs" />
     <Compile Include="DefineClass\InfoSearchSetting.cs" />
+    <Compile Include="DefineClass\NotifyPropertyChangedItem.cs" />
     <Compile Include="DefineClass\PicUpTitle.cs" />
+    <Compile Include="DefineClass\ServiceItem.cs" />
+    <Compile Include="Menu\CmdExeSearch.cs" />
     <Compile Include="UserCtrlView\BlackoutWindow.xaml.cs">
       <DependentUpon>BlackoutWindow.xaml</DependentUpon>
     </Compile>
@@ -94,6 +99,27 @@
     <Compile Include="Common\ItemFontCache.cs" />
     <Compile Include="Common\StatusManager.cs" />
     <Compile Include="CtrlCmdDefEx\EpgEventInfoEx.cs" />
+    <Compile Include="Common\DBBase.cs" />
+    <Compile Include="Common\DB_EpgEventInfo.cs" />
+    <Compile Include="Common\DB_EpgSearchKeyInfo.cs" />
+    <Compile Include="Common\DB_RecLog.cs" />
+    <Compile Include="Common\DB_SearchLog.cs" />
+    <Compile Include="Common\DB_SearchLogNotWord.cs" />
+    <Compile Include="Common\DB_SearchLogResult.cs" />
+    <Compile Include="Common\DB_SearchLogTab.cs" />
+    <Compile Include="DefineClass\IDBRecord.cs" />
+    <Compile Include="DefineClass\RecLogItem.cs" />
+    <Compile Include="DefineClass\SearchLogItem.cs" />
+    <Compile Include="DefineClass\SearchLogResultItem.cs" />
+    <Compile Include="RecLogWindow.xaml.cs">
+      <DependentUpon>RecLogWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="RecLogView.xaml.cs">
+      <DependentUpon>RecLogView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="SearchLogView.xaml.cs">
+      <DependentUpon>SearchLogView.xaml</DependentUpon>
+    </Compile>
     <Compile Include="CtrlCmdDefEx\RecSettingDataEx.cs" />
     <Compile Include="CtrlCmdDefEx\ReserveDataEx.cs" />
     <Compile Include="CtrlCmdDefEx\RecFileInfoEx.cs" />
@@ -162,6 +188,7 @@
     <Compile Include="UserCtrlView\ListBoxDragMoverView.xaml.cs">
       <DependentUpon>ListBoxDragMoverView.xaml</DependentUpon>
     </Compile>
+    <Compile Include="UserCtrlView\ListViewSrt.cs" />
     <Compile Include="RecInfoDescWindow.xaml.cs">
       <DependentUpon>RecInfoDescWindow.xaml</DependentUpon>
     </Compile>
@@ -252,6 +279,9 @@
       <DependentUpon>SetEpgView.xaml</DependentUpon>
     </Compile>
     <Compile Include="DefineClass\TunerSelectInfo.cs" />
+    <Compile Include="UserCtrlView\SearchLogTabItem.xaml.cs">
+      <DependentUpon>SearchLogTabItem.xaml</DependentUpon>
+    </Compile>
     <Compile Include="UserCtrlView\StatusView.xaml.cs">
       <DependentUpon>StatusView.xaml</DependentUpon>
     </Compile>
@@ -280,6 +310,18 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="ConnectWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="RecLogWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="RecLogView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="SearchLogView.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
@@ -485,6 +527,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="UserCtrlView\PresetEditor.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="UserCtrlView\SearchLogTabItem.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
