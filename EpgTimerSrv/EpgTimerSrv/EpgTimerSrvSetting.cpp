@@ -114,6 +114,7 @@ CEpgTimerSrvSetting::SETTING CEpgTimerSrvSetting::LoadSetting(LPCWSTR iniPath)
 	s.backPriority = GetPrivateProfileInt(L"SET", L"BackPriority", 1, iniPath) != 0;
 	s.fixedTunerPriority = GetPrivateProfileInt(L"SET", L"FixedTunerPriority", 1, iniPath) != 0;
 	s.retryOtherTuners = GetPrivateProfileInt(L"SET", L"RetryOtherTuners", 0, iniPath) != 0;
+	s.separateFixedTuners = GetPrivateProfileInt(L"SET", L"SeparateFixedTuners", 0, iniPath) != 0;
 	s.commentAutoAdd = GetPrivateProfileInt(L"SET", L"CommentAutoAdd", 0, iniPath) != 0;
 	s.autoDelRecInfo = GetPrivateProfileInt(L"SET", L"AutoDelRecInfo", 0, iniPath) != 0;
 	s.autoDelRecInfoNum = GetPrivateProfileInt(L"SET", L"AutoDelRecInfoNum", 100, iniPath);
@@ -142,33 +143,29 @@ CEpgTimerSrvSetting::SETTING CEpgTimerSrvSetting::LoadSetting(LPCWSTR iniPath)
 vector<pair<wstring, wstring>> CEpgTimerSrvSetting::EnumBonFileName(LPCWSTR settingPath)
 {
 	vector<pair<wstring, wstring>> ret;
-	WIN32_FIND_DATA findData;
-	HANDLE hFind = FindFirstFile(fs_path(settingPath).append(L"*.ChSet4.txt").c_str(), &findData);
-	if( hFind != INVALID_HANDLE_VALUE ){
-		do{
-			if( (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ){
-				wstring bon = findData.cFileName;
-				for( int depth = 0; bon.empty() == false; ){
-					if( bon.back() == L')' ){
-						depth++;
-					}else if( bon.back() == L'(' && depth > 0 ){
-						if( --depth == 0 ){
-							bon.pop_back();
-							break;
-						}
+	EnumFindFile(fs_path(settingPath).append(L"*.ChSet4.txt").c_str(), [&ret](WIN32_FIND_DATA& findData) -> bool {
+		if( (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ){
+			wstring bon = findData.cFileName;
+			for( int depth = 0; bon.empty() == false; ){
+				if( bon.back() == L')' ){
+					depth++;
+				}else if( bon.back() == L'(' && depth > 0 ){
+					if( --depth == 0 ){
+						bon.pop_back();
+						break;
 					}
-					bon.pop_back();
 				}
-				if( bon.empty() == false ){
-					bon += L".dll";
-					if( std::find_if(ret.begin(), ret.end(), [&](const pair<wstring, wstring>& a) { return CompareNoCase(a.first, bon) == 0; }) == ret.end() ){
-						ret.push_back(pair<wstring, wstring>(bon, findData.cFileName));
-					}
+				bon.pop_back();
+			}
+			if( bon.empty() == false ){
+				bon += L".dll";
+				if( std::find_if(ret.begin(), ret.end(), [&](const pair<wstring, wstring>& a) { return CompareNoCase(a.first, bon) == 0; }) == ret.end() ){
+					ret.push_back(pair<wstring, wstring>(bon, findData.cFileName));
 				}
 			}
-		}while( FindNextFile(hFind, &findData) );
-		FindClose(hFind);
-	}
+		}
+		return true;
+	});
 	return ret;
 }
 
@@ -185,16 +182,12 @@ wstring CEpgTimerSrvSetting::CheckTSExtension(const wstring& ext)
 vector<wstring> CEpgTimerSrvSetting::EnumRecNamePlugInFileName()
 {
 	vector<wstring> ret;
-	WIN32_FIND_DATA findData;
-	HANDLE hFind = FindFirstFile(GetModulePath().replace_filename(L"RecName\\RecName*.dll").c_str(), &findData);
-	if( hFind != INVALID_HANDLE_VALUE ){
-		do{
-			if( (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ){
-				ret.push_back(findData.cFileName);
-			}
-		}while( FindNextFile(hFind, &findData) );
-		FindClose(hFind);
-	}
+	EnumFindFile(GetModulePath().replace_filename(L"RecName\\RecName*.dll").c_str(), [&ret](WIN32_FIND_DATA& findData) -> bool {
+		if( (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ){
+			ret.push_back(findData.cFileName);
+		}
+		return true;
+	});
 	return ret;
 }
 
@@ -494,6 +487,7 @@ INT_PTR CEpgTimerSrvSetting::OnInitDialog()
 	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_BACK_PRIORITY, setting.backPriority);
 	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_FIXED_TUNER_PRIORITY, setting.fixedTunerPriority);
 	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_RETRY_OTHER_TUNERS, setting.retryOtherTuners);
+	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_SEPARATE_FIXED_TUNERS, setting.separateFixedTuners);
 	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_COMMENT_AUTO_ADD, setting.commentAutoAdd);
 	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_REC_INFO_FOLDER_ONLY, setting.recInfoFolderOnly);
 	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_REC_INFO_DEL_FILE, GetPrivateProfileInt(L"SET", L"RecInfoDelFile", 0, commonIniPath.c_str()) != 0);
@@ -535,7 +529,8 @@ INT_PTR CEpgTimerSrvSetting::OnInitDialog()
 		swprintf_s(val, L"%d", i);
 		ComboBox_AddString(GetDlgItem(hwnd, IDC_COMBO_SET_EPG_ARCHIVE_PERIOD), val);
 	}
-	ComboBox_SetCurSel(GetDlgItem(hwnd, IDC_COMBO_SET_EPG_ARCHIVE_PERIOD), min(max(setting.epgArchivePeriodHour / 24, 0), 14));
+	ComboBox_AddString(GetDlgItem(hwnd, IDC_COMBO_SET_EPG_ARCHIVE_PERIOD), L"∞");
+	ComboBox_SetCurSel(GetDlgItem(hwnd, IDC_COMBO_SET_EPG_ARCHIVE_PERIOD), min(max(setting.epgArchivePeriodHour / 24, 0), 15));
 	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_TIME_SYNC, setting.timeSync);
 	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_RESIDENT, setting.residentMode >= 1);
 	SetDlgButtonCheck(hwnd, IDC_CHECK_SET_SHOW_TRAY, setting.residentMode != 1);
@@ -761,6 +756,7 @@ void CEpgTimerSrvSetting::OnBnClickedOk()
 	WritePrivateProfileInt(L"SET", L"BackPriority", GetDlgButtonCheck(hwnd, IDC_CHECK_SET_BACK_PRIORITY), iniPath.c_str());
 	WritePrivateProfileInt(L"SET", L"FixedTunerPriority", GetDlgButtonCheck(hwnd, IDC_CHECK_SET_FIXED_TUNER_PRIORITY), iniPath.c_str());
 	WritePrivateProfileInt(L"SET", L"RetryOtherTuners", GetDlgButtonCheck(hwnd, IDC_CHECK_SET_RETRY_OTHER_TUNERS), iniPath.c_str());
+	WritePrivateProfileInt(L"SET", L"SeparateFixedTuners", GetDlgButtonCheck(hwnd, IDC_CHECK_SET_SEPARATE_FIXED_TUNERS), iniPath.c_str());
 	WritePrivateProfileInt(L"SET", L"CommentAutoAdd", GetDlgButtonCheck(hwnd, IDC_CHECK_SET_COMMENT_AUTO_ADD), iniPath.c_str());
 	WritePrivateProfileInt(L"SET", L"RecInfoFolderOnly", GetDlgButtonCheck(hwnd, IDC_CHECK_SET_REC_INFO_FOLDER_ONLY), iniPath.c_str());
 	WritePrivateProfileInt(L"SET", L"RecInfoDelFile", GetDlgButtonCheck(hwnd, IDC_CHECK_SET_REC_INFO_DEL_FILE), commonIniPath.c_str());
@@ -814,7 +810,9 @@ void CEpgTimerSrvSetting::OnBnClickedOk()
 	WritePrivateProfileInt(L"SET", L"TCPResponseTimeoutSec", GetDlgItemInt(hwnd, IDC_EDIT_SET_TCP_RES_TO, NULL, FALSE), iniPath.c_str());
 	WritePrivateProfileInt(L"SET", L"AutoDelRecInfo", GetDlgButtonCheck(hwnd, IDC_CHECK_SET_AUTODEL_REC_INFO), iniPath.c_str());
 	WritePrivateProfileInt(L"SET", L"AutoDelRecInfoNum", GetDlgItemInt(hwnd, IDC_EDIT_SET_AUTODEL_REC_INFO, NULL, FALSE), iniPath.c_str());
-	WritePrivateProfileInt(L"SET", L"EpgArchivePeriodHour", ComboBox_GetCurSel(GetDlgItem(hwnd, IDC_COMBO_SET_EPG_ARCHIVE_PERIOD)) * 24, iniPath.c_str());
+	//無制限は20000日(480000時間、整数秒で表せる大きな値)で表現する
+	int periodDay = ComboBox_GetCurSel(GetDlgItem(hwnd, IDC_COMBO_SET_EPG_ARCHIVE_PERIOD));
+	WritePrivateProfileInt(L"SET", L"EpgArchivePeriodHour", (periodDay > 14 ? 20000 : periodDay) * 24, iniPath.c_str());
 	WritePrivateProfileInt(L"SET", L"TimeSync", GetDlgButtonCheck(hwnd, IDC_CHECK_SET_TIME_SYNC), iniPath.c_str());
 	WritePrivateProfileInt(L"SET", L"ResidentMode",
 	                       GetDlgButtonCheck(hwnd, IDC_CHECK_SET_RESIDENT) ?

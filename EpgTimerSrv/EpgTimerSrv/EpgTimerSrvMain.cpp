@@ -80,34 +80,16 @@ struct MAIN_WINDOW_CONTEXT {
 		, notifyTipActiveTime(LLONG_MAX) {}
 };
 
-//必要なバッファを確保してGetPrivateProfileSection()を呼ぶ
-vector<WCHAR> GetPrivateProfileSectionBuffer(LPCWSTR appName, LPCWSTR fileName)
-{
-	vector<WCHAR> buff(4096);
-	for(;;){
-		DWORD n = GetPrivateProfileSection(appName, &buff.front(), (DWORD)buff.size(), fileName);
-		if( n < buff.size() - 2 ){
-			buff.resize(n + 1);
-			break;
-		}
-		if( buff.size() >= 16 * 1024 * 1024 ){
-			buff.assign(1, L'\0');
-			break;
-		}
-		buff.resize(buff.size() * 2);
-	}
-	return buff;
-}
-
 }
 
 CEpgTimerSrvMain::CEpgTimerSrvMain()
 	: reserveManager(notifyManager, epgDB)
 	, hwndMain(NULL)
+	, hLuaDll(NULL)
 	, nwtvUdp(false)
 	, nwtvTcp(false)
 {
-	memset(this->notifyUpdateCount, 0, sizeof(this->notifyUpdateCount));
+	std::fill_n(this->notifyUpdateCount, _countof(this->notifyUpdateCount), 0);
 }
 
 bool CEpgTimerSrvMain::TaskMain()
@@ -171,6 +153,10 @@ bool CEpgTimerSrvMain::Main(bool serviceFlag_)
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
+	}
+	if( this->hLuaDll ){
+		FreeLibrary(this->hLuaDll);
+		this->hLuaDll = NULL;
 	}
 	return true;
 }
@@ -480,7 +466,7 @@ LRESULT CALLBACK CEpgTimerSrvMain::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wPar
 		ctx->httpServer.StopServer();
 		ctx->tcpServer.StopServer();
 		ctx->pipeServer.StopServer();
-		ctx->sys->epgDB.CancelLoadData();
+		ctx->sys->stoppingFlag = true;
 		ctx->sys->reserveManager.Finalize();
 		OutputDebugString(L"*** Server finalized ***\r\n");
 		//タスクトレイから削除
@@ -542,7 +528,12 @@ LRESULT CALLBACK CEpgTimerSrvMain::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wPar
 				//スリープ抑止解除
 				SetThreadExecutionState(ES_CONTINUOUS);
 				//rebootFlag時は(指定+5分前)に復帰
-				if( ctx->sys->SetResumeTimer(&ctx->resumeTimer, &ctx->resumeTime, ctx->sys->setting.wakeTime * 60 + (lParam ? 300 : 0)) ){
+				DWORD marginSec;
+				{
+					CBlockLock lock(&ctx->sys->settingLock);
+					marginSec = ctx->sys->setting.wakeTime * 60 + (lParam ? 300 : 0);
+				}
+				if( ctx->sys->SetResumeTimer(&ctx->resumeTimer, &ctx->resumeTime, marginSec) ){
 					SetShutdown(wParam == SD_MODE_STANDBY ? 1 : 2);
 					if( lParam ){
 						//再起動問い合わせ
@@ -657,7 +648,7 @@ LRESULT CALLBACK CEpgTimerSrvMain::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wPar
 				if( itr->notifyID == NOTIFY_UPDATE_SRV_STATUS ){
 					//何もしない
 				}else if( itr->notifyID < _countof(ctx->sys->notifyUpdateCount) ){
-					//更新系の通知をカウント。書き込みがここだけかつDWORDなので排他はしない
+					//更新系の通知をカウント
 					ctx->sys->notifyUpdateCount[itr->notifyID]++;
 				}else{
 					NOTIFYICONDATA nid = {};
@@ -848,7 +839,12 @@ LRESULT CALLBACK CEpgTimerSrvMain::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wPar
 		case TIMER_SET_RESUME:
 			{
 				//復帰タイマ更新(powercfg /waketimersでデバッグ可能)
-				ctx->sys->SetResumeTimer(&ctx->resumeTimer, &ctx->resumeTime, ctx->sys->setting.wakeTime * 60);
+				DWORD marginSec;
+				{
+					CBlockLock lock(&ctx->sys->settingLock);
+					marginSec = ctx->sys->setting.wakeTime * 60;
+				}
+				ctx->sys->SetResumeTimer(&ctx->resumeTimer, &ctx->resumeTime, marginSec);
 				//スリープ抑止
 				EXECUTION_STATE esFlags = ES_CONTINUOUS;
 				EXECUTION_STATE esLastFlags;
@@ -889,8 +885,11 @@ LRESULT CALLBACK CEpgTimerSrvMain::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wPar
 					//EPGリロード完了後にデフォルトのシャットダウン動作を試みる
 					ctx->sys->epgDB.ReloadEpgData(true);
 					SendMessage(hwnd, WM_APP_RELOAD_EPG_CHK, 0, 0);
-					ctx->shutdownModePending = (ctx->sys->setting.recEndMode + 3) % 4 + 1;
-					ctx->rebootFlagPending = ctx->sys->setting.reboot;
+					{
+						CBlockLock lock(&ctx->sys->settingLock);
+						ctx->shutdownModePending = (ctx->sys->setting.recEndMode + 3) % 4 + 1;
+						ctx->rebootFlagPending = ctx->sys->setting.reboot;
+					}
 					SendMessage(hwnd, WM_TIMER, TIMER_SET_RESUME, 0);
 					break;
 				case CReserveManager::CHECK_NEED_SHUTDOWN:
@@ -904,6 +903,7 @@ LRESULT CALLBACK CEpgTimerSrvMain::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wPar
 					ctx->shutdownModePending = LOBYTE(ret.second);
 					ctx->rebootFlagPending = HIBYTE(ret.second) != 0;
 					if( ctx->shutdownModePending == SD_MODE_INVALID ){
+						CBlockLock lock(&ctx->sys->settingLock);
 						ctx->shutdownModePending = (ctx->sys->setting.recEndMode + 3) % 4 + 1;
 						ctx->rebootFlagPending = ctx->sys->setting.reboot;
 					}
@@ -928,7 +928,7 @@ LRESULT CALLBACK CEpgTimerSrvMain::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wPar
 				}
 				if( op.ports.empty() == false && ctx->sys->httpServerRandom.empty() == false ){
 					CEpgTimerSrvMain* sys = ctx->sys;
-					ctx->httpServer.StartServer(op, [sys](lua_State* L) { return sys->InitLuaCallback(L); });
+					ctx->httpServer.StartServer(op, [sys](lua_State* L) { sys->InitLuaCallback(L, sys->httpServerRandom.c_str()); });
 				}
 			}
 			break;
@@ -961,6 +961,7 @@ LRESULT CALLBACK CEpgTimerSrvMain::MainWndProc(HWND hwnd, UINT uMsg, WPARAM wPar
 		case IDC_BUTTON_S3:
 		case IDC_BUTTON_S4:
 			if( ctx->sys->IsSuspendOK() ){
+				CBlockLock lock(&ctx->sys->settingLock);
 				PostMessage(hwnd, WM_APP_REQUEST_SHUTDOWN, LOWORD(wParam) == IDC_BUTTON_S3 ? SD_MODE_STANDBY : SD_MODE_SUSPEND, ctx->sys->setting.reboot);
 			}else{
 				MessageBox(hwnd, L"移行できる状態ではありません。\r\n（もうすぐ予約が始まる。または抑制条件のexeが起動している。など）", NULL, MB_ICONERROR);
@@ -1098,7 +1099,7 @@ void CEpgTimerSrvMain::InitReserveMenuPopup(HMENU hMenu, vector<RESERVE_DATA>& l
 
 void CEpgTimerSrvMain::StopMain()
 {
-	volatile HWND hwndMain_ = this->hwndMain;
+	HWND hwndMain_ = this->hwndMain;
 	if( hwndMain_ ){
 		SendNotifyMessage(hwndMain_, WM_CLOSE, 0, 0);
 	}
@@ -1165,7 +1166,16 @@ void CEpgTimerSrvMain::ReloadSetting(bool initialize)
 	s.enableCaption = GetPrivateProfileInt(L"SET", L"Caption", 1, viewIniPath.c_str()) != 0;
 	s.enableData = GetPrivateProfileInt(L"SET", L"Data", 0, viewIniPath.c_str()) != 0;
 	if( initialize ){
+		this->stoppingFlag = false;
 		this->reserveManager.Initialize(s);
+#ifdef LUA_BUILD_AS_DLL
+		//存在を確認しているだけ
+		this->hLuaDll = LoadLibrary(GetModulePath().replace_filename(LUA_DLL_NAME).c_str());
+		if( this->hLuaDll )
+#endif
+		{
+			this->reserveManager.SetBatCustomHandler(L".lua", [this](CBatManager::BAT_WORK_INFO& work, vector<char>& buff) { DoLuaBat(work, buff); });
+		}
 	}else{
 		this->reserveManager.ReloadSetting(s);
 	}
@@ -1303,14 +1313,20 @@ bool CEpgTimerSrvMain::IsUserWorking() const
 bool CEpgTimerSrvMain::IsFindShareTSFile() const
 {
 	bool found = false;
-	if( this->setting.noShareFile ){
+	WCHAR ext[10] = {};
+	{
+		CBlockLock lock(&this->settingLock);
+		if( this->setting.noShareFile ){
+			wcsncpy_s(ext, this->setting.tsExt.c_str(), _TRUNCATE);
+		}
+	}
+	if( ext[0] ){
 		FILE_INFO_3* info;
 		DWORD entriesread;
 		DWORD totalentries;
 		if( NetFileEnum(NULL, NULL, NULL, 3, (LPBYTE*)&info, MAX_PREFERRED_LENGTH, &entriesread, &totalentries, NULL) == NERR_Success ){
 			for( DWORD i = 0; i < entriesread; i++ ){
-				CBlockLock lock(&this->settingLock);
-				if( IsExt(info[i].fi3_pathname, this->setting.tsExt.c_str()) ){
+				if( IsExt(info[i].fi3_pathname, ext) ){
 					found = true;
 					break;
 				}
@@ -1320,11 +1336,6 @@ bool CEpgTimerSrvMain::IsFindShareTSFile() const
 			//代理プロセス経由で調べる
 			HWND hwnd = FindWindowEx(HWND_MESSAGE, NULL, L"EpgTimerAdminProxy", NULL);
 			if( hwnd ){
-				WCHAR ext[10] = {};
-				{
-					CBlockLock lock(&this->settingLock);
-					wcsncpy_s(ext, this->setting.tsExt.c_str(), _TRUNCATE);
-				}
 				DWORD wp = ext[1] | ext[2] << 8 | ext[3] << 16 | (DWORD)ext[4] << 24;
 				DWORD lp = ext[5] | ext[6] << 8 | ext[7] << 16 | (DWORD)ext[8] << 24;
 				DWORD_PTR result;
@@ -1373,7 +1384,12 @@ bool CEpgTimerSrvMain::IsFindNoSuspendExe() const
 
 vector<RESERVE_DATA>& CEpgTimerSrvMain::PreChgReserveData(vector<RESERVE_DATA>& reserveList) const
 {
-	if( this->setting.commentAutoAdd ){
+	bool commentAutoAdd;
+	{
+		CBlockLock lock(&this->settingLock);
+		commentAutoAdd = this->setting.commentAutoAdd;
+	}
+	if( commentAutoAdd ){
 		for( size_t i = 0; i < reserveList.size(); i++ ){
 			//プログラム予約化した自動予約か
 			if( reserveList[i].eventID == 0xFFFF && reserveList[i].comment.compare(0, 7, L"EPG自動予約") == 0 ){
@@ -1414,11 +1430,13 @@ void CEpgTimerSrvMain::AutoAddReserveEPG(const EPG_AUTO_ADD_DATA& data, vector<R
 	int addCount = 0;
 	int autoAddHour;
 	bool chkGroupEvent;
+	bool separateFixedTuners;
 	bool commentAutoAdd;
 	{
 		CBlockLock lock(&this->settingLock);
 		autoAddHour = this->setting.autoAddHour;
 		chkGroupEvent = this->setting.chkGroupEvent;
+		separateFixedTuners = this->setting.separateFixedTuners;
 		commentAutoAdd = this->setting.commentAutoAdd;
 	}
 	__int64 now = GetNowI64Time();
@@ -1431,14 +1449,16 @@ void CEpgTimerSrvMain::AutoAddReserveEPG(const EPG_AUTO_ADD_DATA& data, vector<R
 		if( info.StartTimeFlag != 0 && info.DurationFlag != 0 &&
 		    now < ConvertI64Time(info.start_time) && ConvertI64Time(info.start_time) < now + autoAddHour * 60 * 60 * I64_1SEC ){
 			addCount++;
-			if( this->reserveManager.IsFindReserve(info.original_network_id, info.transport_stream_id, info.service_id, info.event_id) == false ){
+			if( this->reserveManager.IsFindReserve(info.original_network_id, info.transport_stream_id,
+			                                       info.service_id, info.event_id, data.recSetting.tunerID) == false ){
 				bool found = false;
 				if( info.eventGroupInfoGroupType && chkGroupEvent ){
 					//イベントグループのチェックをする
 					for( size_t j = 0; found == false && j < info.eventGroupInfo.eventDataList.size(); j++ ){
 						//group_typeは必ず1(イベント共有)
 						const EPGDB_EVENT_DATA& e = info.eventGroupInfo.eventDataList[j];
-						if( this->reserveManager.IsFindReserve(e.original_network_id, e.transport_stream_id, e.service_id, e.event_id) ){
+						if( this->reserveManager.IsFindReserve(e.original_network_id, e.transport_stream_id,
+						                                       e.service_id, e.event_id, data.recSetting.tunerID) ){
 							found = true;
 							break;
 						}
@@ -1447,7 +1467,8 @@ void CEpgTimerSrvMain::AutoAddReserveEPG(const EPG_AUTO_ADD_DATA& data, vector<R
 							if( setList[k].originalNetworkID == e.original_network_id &&
 							    setList[k].transportStreamID == e.transport_stream_id &&
 							    setList[k].serviceID == e.service_id &&
-							    setList[k].eventID == e.event_id ){
+							    setList[k].eventID == e.event_id &&
+							    (separateFixedTuners == false || setList[k].recSetting.tunerID == data.recSetting.tunerID) ){
 								found = true;
 								break;
 							}
@@ -1459,7 +1480,8 @@ void CEpgTimerSrvMain::AutoAddReserveEPG(const EPG_AUTO_ADD_DATA& data, vector<R
 					if( setList[j].originalNetworkID == info.original_network_id &&
 					    setList[j].transportStreamID == info.transport_stream_id &&
 					    setList[j].serviceID == info.service_id &&
-					    setList[j].eventID == info.event_id ){
+					    setList[j].eventID == info.event_id &&
+					    (separateFixedTuners == false || setList[j].recSetting.tunerID == data.recSetting.tunerID) ){
 						found = true;
 					}
 				}
@@ -1467,12 +1489,13 @@ void CEpgTimerSrvMain::AutoAddReserveEPG(const EPG_AUTO_ADD_DATA& data, vector<R
 					//プログラム予約化したもののイベントID注釈のチェックをする
 					if( this->reserveManager.FindProgramReserve(
 					    info.original_network_id, info.transport_stream_id, info.service_id, [&](const RESERVE_DATA& a) {
-					        return (a.comment.compare(0, 8, L"EPG自動予約#") == 0 &&
-					                wcstoul(a.comment.c_str() + 8, NULL, 10) == info.event_id) ||
-					               (a.comment.compare(0, 8, L"EPG自動予約(") == 0 &&
-					                a.comment.find(L')') != wstring::npos &&
-					                a.comment.compare(a.comment.find(L')') + 1, 1, L"#") == 0 &&
-					                wcstoul(a.comment.c_str() + a.comment.find(L')') + 2, NULL, 10) == info.event_id); }) ){
+					        return (separateFixedTuners == false || a.recSetting.tunerID == data.recSetting.tunerID) &&
+					               ((a.comment.compare(0, 8, L"EPG自動予約#") == 0 &&
+					                 wcstoul(a.comment.c_str() + 8, NULL, 10) == info.event_id) ||
+					                (a.comment.compare(0, 8, L"EPG自動予約(") == 0 &&
+					                 a.comment.find(L')') != wstring::npos &&
+					                 a.comment.compare(a.comment.find(L')') + 1, 1, L"#") == 0 &&
+					                 wcstoul(a.comment.c_str() + a.comment.find(L')') + 2, NULL, 10) == info.event_id)); }) ){
 						found = true;
 					}
 				}
@@ -1513,7 +1536,8 @@ void CEpgTimerSrvMain::AutoAddReserveEPG(const EPG_AUTO_ADD_DATA& data, vector<R
 				}
 			}else if( data.searchInfo.chkRecEnd != 0 && this->reserveManager.IsFindRecEventInfo(info, data.searchInfo.chkRecDay) ){
 				//録画済みなので無効でない予約は無効にする
-				this->reserveManager.ChgAutoAddNoRec(info.original_network_id, info.transport_stream_id, info.service_id, info.event_id);
+				this->reserveManager.ChgAutoAddNoRec(info.original_network_id, info.transport_stream_id,
+				                                     info.service_id, info.event_id, data.recSetting.tunerID);
 			}
 		}
 	}
@@ -1732,9 +1756,15 @@ void CEpgTimerSrvMain::CtrlCmdCallback(CEpgTimerSrvMain* sys, CMD_STREAM* cmdPar
 		}else{
 			LONGLONG serviceKey;
 			if( ReadVALUE(&serviceKey, cmdParam->data, cmdParam->dataSize, NULL) ){
-				sys->epgDB.EnumEventInfo(serviceKey, [=](const vector<EPGDB_EVENT_INFO>& val) {
-					resParam->param = CMD_SUCCESS;
-					resParam->data = NewWriteVALUE(val, resParam->dataSize);
+				int keys[3] = { (WORD)(serviceKey >> 32), (WORD)(serviceKey >> 16), (WORD)serviceKey };
+				vector<const EPGDB_EVENT_INFO*> valp;
+				sys->epgDB.EnumEventInfo(keys, 3, 0, LLONG_MAX, [=, &valp](const EPGDB_EVENT_INFO* val) {
+					if( val ){
+						valp.push_back(val);
+					}else{
+						resParam->param = CMD_SUCCESS;
+						resParam->data = NewWriteVALUE(valp, resParam->dataSize);
+					}
 				});
 			}
 		}
@@ -1746,9 +1776,15 @@ void CEpgTimerSrvMain::CtrlCmdCallback(CEpgTimerSrvMain* sys, CMD_STREAM* cmdPar
 		}else{
 			LONGLONG serviceKey;
 			if( ReadVALUE(&serviceKey, cmdParam->data, cmdParam->dataSize, NULL) ){
-				sys->epgDB.EnumArchiveEventInfo(serviceKey, [=](const vector<EPGDB_EVENT_INFO>& val) {
-					resParam->param = CMD_SUCCESS;
-					resParam->data = NewWriteVALUE(val, resParam->dataSize);
+				int keys[3] = { (WORD)(serviceKey >> 32), (WORD)(serviceKey >> 16), (WORD)serviceKey };
+				vector<const EPGDB_EVENT_INFO*> valp;
+				sys->epgDB.EnumArchiveEventInfo(keys, 3, 0, LLONG_MAX, true, [=, &valp](const EPGDB_EVENT_INFO* val) {
+					if( val ){
+						valp.push_back(val);
+					}else{
+						resParam->param = CMD_SUCCESS;
+						resParam->data = NewWriteVALUE(valp, resParam->dataSize);
+					}
 				});
 			}
 		}
@@ -1793,6 +1829,7 @@ void CEpgTimerSrvMain::CtrlCmdCallback(CEpgTimerSrvMain* sys, CMD_STREAM* cmdPar
 		{
 			WORD val;
 			if( ReadVALUE(&val, cmdParam->data, cmdParam->dataSize, NULL) && sys->IsSuspendOK() ){
+				CBlockLock lock(&sys->settingLock);
 				//再起動フラグが0xFFのときはデフォルト動作に従う
 				PostMessage(sys->hwndMain, WM_APP_REQUEST_SHUTDOWN, LOBYTE(val), HIBYTE(val) == 0xFF ? sys->setting.reboot : (HIBYTE(val) != 0));
 				resParam->param = CMD_SUCCESS;
@@ -2006,17 +2043,15 @@ void CEpgTimerSrvMain::CtrlCmdCallback(CEpgTimerSrvMain* sys, CMD_STREAM* cmdPar
 			OutputDebugString(L"CMD2_EPG_SRV_ENUM_PLUGIN\r\n");
 			WORD mode;
 			if( ReadVALUE(&mode, cmdParam->data, cmdParam->dataSize, NULL) && (mode == 1 || mode == 2) ){
-				WIN32_FIND_DATA findData;
-				//指定フォルダのファイル一覧取得
-				HANDLE hFind = FindFirstFile(GetModulePath().replace_filename(mode == 1 ? L"RecName\\RecName*.dll" : L"Write\\Write*.dll").c_str(), &findData);
-				if( hFind != INVALID_HANDLE_VALUE ){
-					vector<wstring> fileList;
-					do{
-						if( (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 && IsExt(findData.cFileName, L".dll") ){
-							fileList.push_back(findData.cFileName);
-						}
-					}while( FindNextFile(hFind, &findData) );
-					FindClose(hFind);
+				vector<wstring> fileList;
+				EnumFindFile(GetModulePath().replace_filename(mode == 1 ? L"RecName\\RecName*.dll" : L"Write\\Write*.dll").c_str(),
+				             [&](WIN32_FIND_DATA& findData) -> bool {
+					if( (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 && IsExt(findData.cFileName, L".dll") ){
+						fileList.push_back(findData.cFileName);
+					}
+					return true;
+				});
+				if( fileList.empty() == false ){
 					resParam->data = NewWriteVALUE(fileList, resParam->dataSize);
 					resParam->param = CMD_SUCCESS;
 				}
@@ -2028,26 +2063,22 @@ void CEpgTimerSrvMain::CtrlCmdCallback(CEpgTimerSrvMain* sys, CMD_STREAM* cmdPar
 			OutputDebugString(L"CMD2_EPG_SRV_GET_CHG_CH_TVTEST\r\n");
 			LONGLONG key;
 			if( ReadVALUE(&key, cmdParam->data, cmdParam->dataSize, NULL) ){
-				CBlockLock lock(&sys->settingLock);
 				TVTEST_CH_CHG_INFO info;
 				info.chInfo.useSID = TRUE;
 				info.chInfo.ONID = key >> 32 & 0xFFFF;
 				info.chInfo.TSID = key >> 16 & 0xFFFF;
 				info.chInfo.SID = key & 0xFFFF;
-				info.chInfo.useBonCh = FALSE;
 				vector<DWORD> idList = sys->reserveManager.GetSupportServiceTuner(info.chInfo.ONID, info.chInfo.TSID, info.chInfo.SID);
 				for( int i = (int)idList.size() - 1; i >= 0; i-- ){
 					info.bonDriver = sys->reserveManager.GetTunerBonFileName(idList[i]);
-					for( size_t j = 0; j < sys->setting.viewBonList.size(); j++ ){
-						if( CompareNoCase(sys->setting.viewBonList[j], info.bonDriver) == 0 ){
-							if( sys->reserveManager.IsOpenTuner(idList[i]) == false ){
-								info.chInfo.useBonCh = TRUE;
-								sys->reserveManager.GetTunerCh(idList[i], info.chInfo.ONID, info.chInfo.TSID, info.chInfo.SID, &info.chInfo.space, &info.chInfo.ch);
-							}
-							break;
-						}
+					{
+						CBlockLock lock(&sys->settingLock);
+						info.chInfo.useBonCh =
+							std::find_if(sys->setting.viewBonList.begin(), sys->setting.viewBonList.end(),
+							             [&](const wstring& a) { return CompareNoCase(a, info.bonDriver) == 0; }) != sys->setting.viewBonList.end();
 					}
-					if( info.chInfo.useBonCh ){
+					if( info.chInfo.useBonCh && sys->reserveManager.IsOpenTuner(idList[i]) == false ){
+						sys->reserveManager.GetTunerCh(idList[i], info.chInfo.ONID, info.chInfo.TSID, info.chInfo.SID, &info.chInfo.space, &info.chInfo.ch);
 						resParam->data = NewWriteVALUE(info, resParam->dataSize);
 						resParam->param = CMD_SUCCESS;
 						break;
@@ -2057,8 +2088,14 @@ void CEpgTimerSrvMain::CtrlCmdCallback(CEpgTimerSrvMain* sys, CMD_STREAM* cmdPar
 		}
 		break;
 	case CMD2_EPG_SRV_GET_NOTIFY_LOG:
-		OutputDebugString(L"CMD2_EPG_SRV_GET_NOTIFY_LOG\r\n");
-		if( sys->setting.saveNotifyLog ){
+		{
+			OutputDebugString(L"CMD2_EPG_SRV_GET_NOTIFY_LOG\r\n");
+			{
+				CBlockLock lock(&sys->settingLock);
+				if( sys->setting.saveNotifyLog == false ){
+					break;
+				}
+			}
 			int n;
 			if( ReadVALUE(&n, cmdParam->data, cmdParam->dataSize, NULL) ){
 				fs_path logPath = GetModulePath().replace_filename(L"EpgTimerSrvNotify.log");
@@ -2108,19 +2145,25 @@ void CEpgTimerSrvMain::CtrlCmdCallback(CEpgTimerSrvMain* sys, CMD_STREAM* cmdPar
 			OutputDebugString(L"CMD2_EPG_SRV_NWTV_SET_CH\r\n");
 			SET_CH_INFO val;
 			if( ReadVALUE(&val, cmdParam->data, cmdParam->dataSize, NULL) && val.useSID ){
-				CBlockLock lock(&sys->settingLock);
-				vector<DWORD> idList = sys->reserveManager.GetSupportServiceTuner(val.ONID, val.TSID, val.SID);
-				vector<DWORD> idUseList;
-				for( int i = (int)idList.size() - 1; i >= 0; i-- ){
-					wstring bonDriver = sys->reserveManager.GetTunerBonFileName(idList[i]);
-					for( size_t j = 0; j < sys->setting.viewBonList.size(); j++ ){
-						if( CompareNoCase(sys->setting.viewBonList[j], bonDriver) == 0 ){
-							idUseList.push_back(idList[i]);
-							break;
+				bool nwtvUdp;
+				bool nwtvTcp;
+				vector<DWORD> idUseList = sys->reserveManager.GetSupportServiceTuner(val.ONID, val.TSID, val.SID);
+				{
+					CBlockLock lock(&sys->settingLock);
+					nwtvUdp = sys->nwtvUdp;
+					nwtvTcp = sys->nwtvTcp;
+					for( size_t i = 0; i < idUseList.size(); ){
+						wstring bonDriver = sys->reserveManager.GetTunerBonFileName(idUseList[i]);
+						if( std::find_if(sys->setting.viewBonList.begin(), sys->setting.viewBonList.end(),
+						                 [&](const wstring& a) { return CompareNoCase(a, bonDriver) == 0; }) == sys->setting.viewBonList.end() ){
+							idUseList.erase(idUseList.begin() + i);
+						}else{
+							i++;
 						}
 					}
+					std::reverse(idUseList.begin(), idUseList.end());
 				}
-				if( sys->reserveManager.SetNWTVCh(sys->nwtvUdp, sys->nwtvTcp, val, idUseList) ){
+				if( sys->reserveManager.OpenNWTV(0, nwtvUdp, nwtvTcp, val, idUseList).first ){
 					resParam->param = CMD_SUCCESS;
 				}
 			}
@@ -2128,7 +2171,7 @@ void CEpgTimerSrvMain::CtrlCmdCallback(CEpgTimerSrvMain* sys, CMD_STREAM* cmdPar
 		break;
 	case CMD2_EPG_SRV_NWTV_CLOSE:
 		OutputDebugString(L"CMD2_EPG_SRV_NWTV_CLOSE\r\n");
-		if( sys->reserveManager.CloseNWTV() ){
+		if( sys->reserveManager.CloseNWTV(0) ){
 			resParam->param = CMD_SUCCESS;
 		}
 		break;
@@ -2913,7 +2956,7 @@ bool CEpgTimerSrvMain::CtrlCmdProcessCompatible(CMD_STREAM& cmdParam, CMD_STREAM
 extern "C" int luaopen_zlib(lua_State*);
 #endif
 
-void CEpgTimerSrvMain::InitLuaCallback(lua_State* L)
+void CEpgTimerSrvMain::InitLuaCallback(lua_State* L, LPCSTR serverRandom)
 {
 	static const luaL_Reg closures[] = {
 		{ "GetGenreName", LuaGetGenreName },
@@ -2939,6 +2982,7 @@ void CEpgTimerSrvMain::InitLuaCallback(lua_State* L)
 		{ "GetRecFilePath", LuaGetRecFilePath },
 		{ "GetRecFileInfo", LuaGetRecFileInfo },
 		{ "GetRecFileInfoBasic", LuaGetRecFileInfoBasic },
+		{ "ChgPathRecFileInfo", LuaChgPathRecFileInfo },
 		{ "ChgProtectRecFileInfo", LuaChgProtectRecFileInfo },
 		{ "DelRecFileInfo", LuaDelRecFileInfo },
 		{ "GetTunerReserveAll", LuaGetTunerReserveAll },
@@ -2951,6 +2995,7 @@ void CEpgTimerSrvMain::InitLuaCallback(lua_State* L)
 		{ "GetNotifyUpdateCount", LuaGetNotifyUpdateCount },
 		{ "FindFile", LuaFindFile },
 		{ "OpenNetworkTV", LuaOpenNetworkTV },
+		{ "IsOpenNetworkTV", LuaIsOpenNetworkTV },
 		{ "CloseNetworkTV", LuaCloseNetworkTV },
 		{ NULL, NULL }
 	};
@@ -2959,7 +3004,7 @@ void CEpgTimerSrvMain::InitLuaCallback(lua_State* L)
 	lua_pushlightuserdata(L, this);
 	luaL_setfuncs(L, closures, 1);
 	LuaHelp::reg_int(L, "htmlEscape", 0);
-	LuaHelp::reg_string(L, "serverRandom", this->httpServerRandom.c_str());
+	LuaHelp::reg_string(L, "serverRandom", serverRandom);
 	//ファイルハンドルはDLLを越えて互換とは限らないので、"FILE*"メタテーブルも独自のものが必要
 	LuaHelp::f_createmeta(L);
 	//osライブラリに対するUTF-8補完
@@ -3041,6 +3086,33 @@ void CEpgTimerSrvMain::InitLuaCallback(lua_State* L)
 #endif
 }
 
+void CEpgTimerSrvMain::DoLuaBat(CBatManager::BAT_WORK_INFO& work, vector<char>& buff)
+{
+	lua_State* L = luaL_newstate();
+	if( L ){
+		luaL_openlibs(L);
+		InitLuaCallback(L, NULL);
+		lua_createtable(L, 0, 1 + (int)work.macroList.size());
+		string val;
+		WtoUTF8(work.batFilePath, val);
+		LuaHelp::reg_string(L, "ScriptPath", val.c_str());
+		for( size_t i = 0; i < work.macroList.size(); i++ ){
+			WtoUTF8(work.macroList[i].second, val);
+			LuaHelp::reg_string_(L, work.macroList[i].first.c_str(), work.macroList[i].first.size() + 1, val.c_str());
+		}
+		lua_setglobal(L, "env");
+		if( luaL_dostring(L, buff.data() + (strncmp(buff.data(), "\xEF\xBB\xBF", 3) ? 0 : 3)) != 0 ){
+			wstring werr;
+			LPCSTR err = lua_tostring(L, -1);
+			if( err ){
+				UTF8toW(err, werr);
+			}
+			_OutputDebugString(L"Error %s: %s\r\n", work.batFilePath.c_str(), werr.c_str());
+		}
+		lua_close(L);
+	}
+}
+
 #if 1
 //Lua-edcb空間のコールバック
 
@@ -3076,7 +3148,7 @@ int CEpgTimerSrvMain::LuaGetGenreName(lua_State* L)
 	CLuaWorkspace ws(L);
 	wstring name;
 	if( lua_gettop(L) == 1 ){
-		GetGenreName(lua_tointeger(L, -1) >> 8 & 0xFF, lua_tointeger(L, -1) & 0xFF, name);
+		name = GetGenreName(lua_tointeger(L, -1) >> 8 & 0xFF, lua_tointeger(L, -1) & 0xFF);
 	}
 	lua_pushstring(L, ws.WtoUTF8(name));
 	return 1;
@@ -3087,7 +3159,7 @@ int CEpgTimerSrvMain::LuaGetComponentTypeName(lua_State* L)
 	CLuaWorkspace ws(L);
 	wstring name;
 	if( lua_gettop(L) == 1 ){
-		GetComponentTypeName(lua_tointeger(L, -1) >> 8 & 0xFF, lua_tointeger(L, -1) & 0xFF, name);
+		name = GetComponentTypeName(lua_tointeger(L, -1) >> 8 & 0xFF, lua_tointeger(L, -1) & 0xFF);
 	}
 	lua_pushstring(L, ws.WtoUTF8(name));
 	return 1;
@@ -3095,8 +3167,17 @@ int CEpgTimerSrvMain::LuaGetComponentTypeName(lua_State* L)
 
 int CEpgTimerSrvMain::LuaSleep(lua_State* L)
 {
-	Sleep((DWORD)lua_tointeger(L, 1));
-	return 0;
+	CLuaWorkspace ws(L);
+	DWORD wait = (DWORD)lua_tointeger(L, 1);
+	DWORD base = GetTickCount();
+	DWORD tick = base;
+	do{
+		//stoppingFlagでも必ず休む
+		Sleep(min<DWORD>(wait - (tick - base), 100));
+		tick = GetTickCount();
+	}while( wait > tick - base && ws.sys->stoppingFlag == false );
+	lua_pushboolean(L, ws.sys->stoppingFlag);
+	return 1;
 }
 
 int CEpgTimerSrvMain::LuaConvert(lua_State* L)
@@ -3284,28 +3365,18 @@ int CEpgTimerSrvMain::LuaGetEventMinMaxTimeProc(lua_State* L, bool archive)
 {
 	CLuaWorkspace ws(L);
 	if( lua_gettop(L) == 3 ){
-		__int64 minMaxTime[2] = { LLONG_MAX, LLONG_MIN };
-		__int64 serviceKey = Create64Key((WORD)lua_tointeger(L, 1), (WORD)lua_tointeger(L, 2), (WORD)lua_tointeger(L, 3));
-		auto enumProc = [&minMaxTime](const vector<EPGDB_EVENT_INFO>& val) -> void {
-			for( size_t i = 0; i < val.size(); i++ ){
-				if( val[i].StartTimeFlag ){
-					__int64 startTime = ConvertI64Time(val[i].start_time);
-					minMaxTime[0] = min(minMaxTime[0], startTime);
-					minMaxTime[1] = max(minMaxTime[1], startTime);
-				}
-			}
-		};
+		pair<__int64, __int64> ret;
 		if( archive ){
-			ws.sys->epgDB.EnumArchiveEventInfo(serviceKey, enumProc);
+			ret = ws.sys->epgDB.GetArchiveEventMinMaxTime((WORD)lua_tointeger(L, 1), (WORD)lua_tointeger(L, 2), (WORD)lua_tointeger(L, 3));
 		}else{
-			ws.sys->epgDB.EnumEventInfo(serviceKey, enumProc);
+			ret = ws.sys->epgDB.GetEventMinMaxTime((WORD)lua_tointeger(L, 1), (WORD)lua_tointeger(L, 2), (WORD)lua_tointeger(L, 3));
 		}
-		if( minMaxTime[0] != LLONG_MAX ){
+		if( ret.first != LLONG_MAX ){
 			lua_newtable(ws.L);
 			SYSTEMTIME st;
-			ConvertSystemTime(minMaxTime[0], &st);
+			ConvertSystemTime(ret.first, &st);
 			LuaHelp::reg_time(L, "minTime", st);
-			ConvertSystemTime(minMaxTime[1], &st);
+			ConvertSystemTime(ret.second, &st);
 			LuaHelp::reg_time(L, "maxTime", st);
 			return 1;
 		}
@@ -3351,39 +3422,21 @@ int CEpgTimerSrvMain::LuaEnumEventInfoProc(lua_State* L, bool archive)
 			key.push_back(LuaHelp::isnil(L, "sid") ? -1 : LuaHelp::get_int(L, "sid"));
 			lua_pop(L, 1);
 		}
-		auto enumProc = [=, &ws, &key](const map<LONGLONG, EPGDB_SERVICE_EVENT_INFO>& val) -> void {
-			lua_newtable(ws.L);
-			int n = 0;
-			for( auto itr = val.cbegin(); itr != val.end(); itr++ ){
-				for( size_t i = 0; i + 2 < key.size(); i += 3 ){
-					if( (key[i] < 0 || key[i] == itr->second.serviceInfo.ONID) &&
-					    (key[i+1] < 0 || key[i+1] == itr->second.serviceInfo.TSID) &&
-					    (key[i+2] < 0 || key[i+2] == itr->second.serviceInfo.SID) ){
-						for( size_t j = 0; j < itr->second.eventList.size(); j++ ){
-							if( (enumStart != 0 || enumEnd != LLONG_MAX) && (enumStart != LLONG_MAX || itr->second.eventList[j].StartTimeFlag) ){
-								if( itr->second.eventList[j].StartTimeFlag == 0 ){
-									continue;
-								}
-								__int64 startTime = ConvertI64Time(itr->second.eventList[j].start_time);
-								if( startTime < enumStart || enumEnd <= startTime ){
-									continue;
-								}
-							}
-							lua_newtable(ws.L);
-							PushEpgEventInfo(ws, itr->second.eventList[j]);
-							lua_rawseti(ws.L, -2, ++n);
-						}
-						break;
-					}
-				}
+		lua_newtable(ws.L);
+		int i = 0;
+		auto enumProc = [&ws, &i](const EPGDB_EVENT_INFO* val) -> void {
+			if( val ){
+				lua_newtable(ws.L);
+				PushEpgEventInfo(ws, *val);
+				lua_rawseti(ws.L, -2, ++i);
 			}
 		};
 		if( archive ){
-			ws.sys->epgDB.EnumArchiveEventAll(enumProc);
-			return 1;
-		}else if( ws.sys->epgDB.EnumEventAll(enumProc) ){
-			return 1;
+			ws.sys->epgDB.EnumArchiveEventInfo(key.data(), key.size(), enumStart, enumEnd, false, enumProc);
+		}else{
+			ws.sys->epgDB.EnumEventInfo(key.data(), key.size(), enumStart, enumEnd, enumProc);
 		}
+		return 1;
 	}
 	lua_pushnil(L);
 	return 1;
@@ -3592,6 +3645,21 @@ int CEpgTimerSrvMain::LuaGetRecFileInfoProc(lua_State* L, bool getExtraInfo)
 		}
 	}
 	return 1;
+}
+
+int CEpgTimerSrvMain::LuaChgPathRecFileInfo(lua_State* L)
+{
+	CLuaWorkspace ws(L);
+	if( lua_gettop(L) == 2 ){
+		LPCSTR path = lua_tostring(L, 2);
+		if( path ){
+			vector<REC_FILE_INFO> list(1);
+			list.front().id = (DWORD)lua_tointeger(L, 1);
+			UTF8toW(path, list.front().recFilePath);
+			ws.sys->reserveManager.ChgPathRecFileInfo(list);
+		}
+	}
+	return 0;
 }
 
 int CEpgTimerSrvMain::LuaChgProtectRecFileInfo(lua_State* L)
@@ -3816,26 +3884,22 @@ int CEpgTimerSrvMain::LuaFindFile(lua_State* L)
 		if( pattern ){
 			wstring strPattern;
 			UTF8toW(pattern, strPattern);
-			WIN32_FIND_DATA findData;
-			HANDLE hFind = FindFirstFile(strPattern.c_str(), &findData);
-			if( hFind != INVALID_HANDLE_VALUE ){
-				vector<WIN32_FIND_DATA> findList;
-				do{
-					findList.push_back(findData);
-				}while( (n <= 0 || --n > 0) && FindNextFile(hFind, &findData) );
-				FindClose(hFind);
-				lua_createtable(L, (int)findList.size(), 0);
-				for( size_t i = 0; i < findList.size(); i++ ){
-					lua_createtable(L, 0, 4);
-					LuaHelp::reg_string(L, "name", ws.WtoUTF8(findList[i].cFileName));
-					LuaHelp::reg_int64(L, "size", (__int64)findList[i].nFileSizeHigh << 32 | findList[i].nFileSizeLow);
-					LuaHelp::reg_boolean(L, "isdir", (findList[i].dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);
-					FILETIME ft = findList[i].ftLastWriteTime;
-					SYSTEMTIME st;
-					ConvertSystemTime(((__int64)ft.dwHighDateTime << 32 | ft.dwLowDateTime) + I64_UTIL_TIMEZONE, &st);
-					LuaHelp::reg_time(L, "mtime", st);
-					lua_rawseti(L, -2, (int)i + 1);
+			int i = 0;
+			EnumFindFile(strPattern.c_str(), [&ws, &n, &i](WIN32_FIND_DATA& findData) -> bool {
+				if( i == 0 ){
+					lua_newtable(ws.L);
 				}
+				lua_createtable(ws.L, 0, 4);
+				LuaHelp::reg_string(ws.L, "name", ws.WtoUTF8(findData.cFileName));
+				LuaHelp::reg_int64(ws.L, "size", (__int64)findData.nFileSizeHigh << 32 | findData.nFileSizeLow);
+				LuaHelp::reg_boolean(ws.L, "isdir", (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);
+				SYSTEMTIME st;
+				ConvertSystemTime(((__int64)findData.ftLastWriteTime.dwHighDateTime << 32 | findData.ftLastWriteTime.dwLowDateTime) + I64_UTIL_TIMEZONE, &st);
+				LuaHelp::reg_time(ws.L, "mtime", st);
+				lua_rawseti(ws.L, -2, ++i);
+				return n <= 0 || --n > 0;
+			});
+			if( i != 0 ){
 				return 1;
 			}
 		}
@@ -3847,7 +3911,7 @@ int CEpgTimerSrvMain::LuaFindFile(lua_State* L)
 int CEpgTimerSrvMain::LuaOpenNetworkTV(lua_State* L)
 {
 	CLuaWorkspace ws(L);
-	if( lua_gettop(L) == 4 ){
+	if( lua_gettop(L) == 4 || lua_gettop(L) == 5 ){
 		SET_CH_INFO info;
 		info.useSID = TRUE;
 		info.ONID = (WORD)lua_tointeger(L, 2);
@@ -3855,31 +3919,42 @@ int CEpgTimerSrvMain::LuaOpenNetworkTV(lua_State* L)
 		info.SID = (WORD)lua_tointeger(L, 4);
 		info.useBonCh = FALSE;
 		int mode = (int)lua_tointeger(L, 1);
-		int lastMode;
-		vector<DWORD> idUseList;
+		int nwtvID = (int)lua_tointeger(L, 5);
+		vector<DWORD> idUseList = ws.sys->reserveManager.GetSupportServiceTuner(info.ONID, info.TSID, info.SID);
 		{
 			CBlockLock lock(&ws.sys->settingLock);
-			lastMode = (ws.sys->nwtvUdp ? 1 : 0) + (ws.sys->nwtvTcp ? 2 : 0);
-			ws.sys->nwtvUdp = mode == 1 || mode == 3;
-			ws.sys->nwtvTcp = mode == 2 || mode == 3;
-			vector<DWORD> idList = ws.sys->reserveManager.GetSupportServiceTuner(info.ONID, info.TSID, info.SID);
-			for( int i = (int)idList.size() - 1; i >= 0; i-- ){
-				wstring bonDriver = ws.sys->reserveManager.GetTunerBonFileName(idList[i]);
-				for( size_t j = 0; j < ws.sys->setting.viewBonList.size(); j++ ){
-					if( CompareNoCase(ws.sys->setting.viewBonList[j], bonDriver) == 0 ){
-						idUseList.push_back(idList[i]);
-						break;
-					}
+			for( size_t i = 0; i < idUseList.size(); ){
+				wstring bonDriver = ws.sys->reserveManager.GetTunerBonFileName(idUseList[i]);
+				if( std::find_if(ws.sys->setting.viewBonList.begin(), ws.sys->setting.viewBonList.end(),
+				                 [&](const wstring& a) { return CompareNoCase(a, bonDriver) == 0; }) == ws.sys->setting.viewBonList.end() ){
+					idUseList.erase(idUseList.begin() + i);
+				}else{
+					i++;
 				}
 			}
+			std::reverse(idUseList.begin(), idUseList.end());
 		}
-		if( lastMode != mode ){
-			ws.sys->reserveManager.CloseNWTV();
-		}
-		if( ws.sys->reserveManager.SetNWTVCh((mode == 1 || mode == 3), (mode == 2 || mode == 3), info, idUseList) ){
+		//すでに起動しているものの送信モードは変更しない
+		pair<bool, int> retAndProcessID =
+			ws.sys->reserveManager.OpenNWTV(nwtvID, (mode == 1 || mode == 3), (mode == 2 || mode == 3), info, idUseList);
+		if( retAndProcessID.first ){
 			lua_pushboolean(L, true);
-			return 1;
+			lua_pushinteger(L, retAndProcessID.second);
+			return 2;
 		}
+	}
+	lua_pushboolean(L, false);
+	return 1;
+}
+
+int CEpgTimerSrvMain::LuaIsOpenNetworkTV(lua_State* L)
+{
+	CLuaWorkspace ws(L);
+	pair<bool, int> retAndProcessID = ws.sys->reserveManager.IsOpenNWTV((int)lua_tointeger(L, 1));
+	if( retAndProcessID.first ){
+		lua_pushboolean(L, true);
+		lua_pushinteger(L, retAndProcessID.second);
+		return 2;
 	}
 	lua_pushboolean(L, false);
 	return 1;
@@ -3888,7 +3963,7 @@ int CEpgTimerSrvMain::LuaOpenNetworkTV(lua_State* L)
 int CEpgTimerSrvMain::LuaCloseNetworkTV(lua_State* L)
 {
 	CLuaWorkspace ws(L);
-	ws.sys->reserveManager.CloseNWTV();
+	ws.sys->reserveManager.CloseNWTV((int)lua_tointeger(L, 1));
 	return 0;
 }
 
