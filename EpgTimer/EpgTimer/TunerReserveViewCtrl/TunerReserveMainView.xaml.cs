@@ -41,7 +41,7 @@ namespace EpgTimer
             mc.ResetCommandBindings(this, cmdMenu);
 
             //予約をたどるショートカットの登録。こちらはコマンドで問題無いが、番組表側と揃えておく。
-            this.PreviewKeyDown += (sender, e) => ViewUtil.OnKyeMoveNextReserve(sender, e, this);
+            this.PreviewKeyDown += (sender, e) => ViewUtil.OnKeyMoveNextReserve(sender, e, this);
         }
         public void RefreshMenu()
         {
@@ -52,9 +52,9 @@ namespace EpgTimer
         }
         public void RefreshView()
         {
-            tunerReserveView.reserveViewPanel.Background = CommonManager.Instance.TunerBackColor;
-            tunerReserveTimeView.Background = CommonManager.Instance.TunerTimeBorderColor;
-            tunerReserveNameView.Background = CommonManager.Instance.TunerNameBorderColor;
+            tunerReserveView.reserveViewPanel.Background = Settings.BrushCache.TunerBackColor;
+            tunerReserveTimeView.Background = Settings.BrushCache.TunerTimeBorderColor;
+            tunerReserveNameView.Background = Settings.BrushCache.TunerNameBorderColor;
         }
 
         /// <summary>表示スクロールイベント呼び出し</summary>

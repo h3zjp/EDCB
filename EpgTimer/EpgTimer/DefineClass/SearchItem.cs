@@ -5,11 +5,12 @@ using System.Windows.Media;
 
 namespace EpgTimer
 {
-    public class SearchItem : RecSettingItem
+    public class SearchItem : RecSettingItem, IEpgSettingAccess
     {
         protected EpgEventInfo eventInfo = null;
         public virtual EpgEventInfo EventInfo { get { return eventInfo; } set { eventInfo = value; } }
         public ReserveData ReserveInfo { get; set; }
+        public int EpgSettingIndex { get; set; }
 
         public SearchItem() { }
         public SearchItem(EpgEventInfo item) { eventInfo = item; }
@@ -44,15 +45,9 @@ namespace EpgTimer
         {
             get
             {
-                if (EventInfo != null)
-                {
-                    UInt64 serviceKey = EventInfo.Create64Key();
-                    if (ChSet5.ChList.ContainsKey(serviceKey) == true)
-                    {
-                        return ChSet5.ChList[serviceKey].ServiceName;
-                    }
-                }
-                return "";
+                if (EventInfo == null) return "";
+                //
+                return EventInfo.ServiceName;
             }
         }
         public virtual string NetworkName
@@ -248,6 +243,33 @@ namespace EpgTimer
                 return reserveTuner;
             }
         }
+        private string _estimatedRecSize;
+        public string EstimatedRecSize
+        {
+            get
+            {
+                if (ReserveInfo == null) return "";
+                //
+                if (_estimatedRecSize == null)
+                {
+                    _estimatedRecSize = "";
+                    if (ReserveInfo.IsWatchMode == false)
+                    {
+                        int bitrate = 0;
+                        for (int i = 0; bitrate <= 0; i++)
+                        {
+                            string key = CommonManager.Create64Key((ushort)(i > 2 ? 0xFFFF : ReserveInfo.OriginalNetworkID),
+                                                                   (ushort)(i > 1 ? 0xFFFF : ReserveInfo.TransportStreamID),
+                                                                   (ushort)(i > 0 ? 0xFFFF : ReserveInfo.ServiceID)).ToString("X12");
+                            bitrate = IniFileHandler.GetPrivateProfileInt("BITRATE", key, 0, SettingPath.BitrateIniPath);
+                            bitrate = bitrate <= 0 && i == 3 ? 19456 : bitrate;
+                        }
+                        _estimatedRecSize = ((double)Math.Max(bitrate / 8 * 1000 * ReserveInfo.DurationActual, 0) / 1024 / 1024 / 1024).ToString("0.0 GB");
+                    }
+                }
+                return _estimatedRecSize;
+            }
+        }
         public override string MarginStart
         {
             get
@@ -297,7 +319,11 @@ namespace EpgTimer
                     if (IsReserved == true)
                     {
                         string ret = new ReserveItem(ReserveInfo).Status;
-                        return ret == "" ? "予" : ret;
+                        return ret != "" ? ret : ReserveInfo.IsWatchMode ? "視" : "予";
+                    }
+                    if (MenuUtil.GetRecFileInfo(EventInfo) != null)
+                    {
+                        return "済";//放映中でも「済」なら優先する
                     }
                     if (EventInfo.IsOver() == true)
                     {
@@ -315,18 +341,23 @@ namespace EpgTimer
         {
             get
             {
+                int idx = 0;
                 if (EventInfo != null)
                 {
                     if (IsReserved == true)
                     {
                         return new ReserveItem(ReserveInfo).StatusColor;
                     }
-                    if (EventInfo.IsOnAir() == true)
+                    else if (EventInfo.IsOnAir() == true)
                     {
-                        return CommonManager.Instance.ResStatusColor[2];
+                        idx = 2;
+                    }
+                    else if (MenuUtil.GetRecFileInfo(EventInfo) != null)
+                    {
+                        idx = 4;//色は放映中を優先する
                     }
                 }
-                return CommonManager.Instance.ResStatusColor[0];
+                return Settings.BrushCache.ResStatusColor[idx];
             }
         }
         public override Brush ForeColor
@@ -336,7 +367,7 @@ namespace EpgTimer
                 //番組表へジャンプ時の強調表示
                 if (NowJumpingTable != 0 || ReserveInfo == null) return base.ForeColor;
                 //
-                return CommonManager.Instance.RecModeForeColor[ReserveInfo.RecSetting.RecMode];
+                return Settings.BrushCache.RecModeForeColor[ReserveInfo.RecSetting.RecMode];
             }
         }
         public override Brush BackColor
@@ -352,7 +383,7 @@ namespace EpgTimer
         }
         public override Brush BorderBrush
         {
-            get { return ViewUtil.EpgDataContentBrush(EventInfo); }
+            get { return ViewUtil.EpgDataContentBrush(EventInfo, EpgSettingIndex); }
         }
     }
 
@@ -378,11 +409,11 @@ namespace EpgTimer
         //{
         //    return list.Any(info => item != null && item.IsReserved == true);
         //}
-        public static List<SearchItem> ToSearchList(this IEnumerable<EpgEventInfo> eventList, bool isExceptEnded = false)
+        public static List<SearchItem> ToSearchList(this IEnumerable<EpgEventInfo> eventList, bool isExceptEnded = false, DateTime? keyTime = null)
         {
             if (eventList == null) return new List<SearchItem>();
             //
-            var list = eventList.Where(info => isExceptEnded == false || info.IsOver() == false)
+            var list = eventList.Where(info => isExceptEnded == false || info.IsOver(keyTime) == false)
                                 .Select(info => new SearchItem(info)).ToList();
             list.SetReserveData();
             return list;

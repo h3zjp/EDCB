@@ -29,6 +29,7 @@ namespace EpgTimer
 
         static ChgReserveWindow()
         {
+            //追加予約の選択と重複予約の変更時の選択継続用
             mainWindow.reserveView.ViewUpdated += ChgReserveWindow.UpdatesViewSelection;
             mainWindow.tunerReserveView.ViewUpdated += ChgReserveWindow.UpdatesViewSelection;
             SearchWindow.ViewReserveUpdated += ChgReserveWindow.UpdatesViewSelection;
@@ -79,7 +80,7 @@ namespace EpgTimer
             if (info == null)
             {
                 info = new ReserveData();
-                var sTime = DateTime.UtcNow.AddHours(9).AddMinutes(5);
+                var sTime = CommonUtil.EdcbNow.AddMinutes(5);
                 info.StartTime = sTime.AddSeconds(-sTime.Second);
                 info.StartTimeEpg = info.StartTime;
                 info.DurationSecond = 1800;
@@ -166,6 +167,7 @@ namespace EpgTimer
             recSettingView.RefreshView();
             CheckMultiReserve();
             UpdateErrStatus();
+            RefreshProgramTab(true);
             return true;
         }
 
@@ -229,12 +231,8 @@ namespace EpgTimer
                 textBox_title.Text = null;
                 Dispatcher.BeginInvoke(new Action(() => textBox_title.Text = resInfo.Title), DispatcherPriority.Render);
 
-                comboBox_service.SelectedIndex = 0;
-                ChSet5Item ch;
-                if (ChSet5.ChList.TryGetValue(resInfo.Create64Key(), out ch) == true)
-                {
-                    comboBox_service.SelectedItem = ch;
-                }
+                comboBox_service.SelectedItem = ChSet5.ChItem(resInfo.Create64Key());
+                if (comboBox_service.SelectedItem == null) comboBox_service.SelectedIndex = 0;
 
                 DateTime startTime = resInfo.StartTime;
                 DateTime endTime = resInfo.StartTime.AddSeconds(resInfo.DurationSecond);
@@ -264,9 +262,9 @@ namespace EpgTimer
             try
             {
                 resInfo.Title = textBox_title.Text;
-                var ch = comboBox_service.SelectedItem as ChSet5Item;
+                var ch = comboBox_service.SelectedItem as EpgServiceInfo;
 
-                resInfo.StationName = ch.ServiceName;
+                resInfo.StationName = ch.service_name;
                 resInfo.OriginalNetworkID = ch.ONID;
                 resInfo.TransportStreamID = ch.TSID;
                 resInfo.ServiceID = ch.SID;
@@ -348,8 +346,8 @@ namespace EpgTimer
                     if (eventInfoNow != null && (reserveInfo.IsManual == true || reserveInfo.IsSamePg(eventInfoNow) == false))
                     {
                         //基本的にAddReserveEpgWindowと同じ処理内容
-                        if (MenuUtil.CheckReservable(CommonUtil.ToList(eventInfoNow)) == null) return;
-                        eventInfoNow.ConvertToReserveData(ref resInfo);
+                        if (MenuUtil.CheckReservable(eventInfoNow.IntoList()) == null) return;
+                        eventInfoNow.ToReserveData(ref resInfo);
                         resInfo.ReleaseAutoAdd();
                     }
                 }
@@ -366,12 +364,12 @@ namespace EpgTimer
                 {
                     resInfo.Comment = "";
                     oldset = new HashSet<uint>(CommonManager.Instance.DB.ReserveList.Keys);
-                    ret = MenuUtil.ReserveAdd(CommonUtil.ToList(resInfo));
+                    ret = MenuUtil.ReserveAdd(resInfo.IntoList());
                     StatusManager.StatusNotifySet(ret, "録画予約を追加");
                 }
                 else
                 {
-                    ret = MenuUtil.ReserveChange(CommonUtil.ToList(resInfo));
+                    ret = MenuUtil.ReserveChange(resInfo.IntoList());
                     StatusManager.StatusNotifySet(ret, "録画予約を変更");
                 }
                 if (ret == false) return;
@@ -400,7 +398,7 @@ namespace EpgTimer
         {
             if (CheckReserveChange(e, 2) == false) return;
 
-            bool ret = MenuUtil.ReserveDelete(CommonUtil.ToList(reserveInfo));
+            bool ret = MenuUtil.ReserveDelete(reserveInfo.IntoList());
             StatusManager.StatusNotifySet(ret, "録画予約を削除");
             if (ret == false) return;
 
@@ -439,25 +437,29 @@ namespace EpgTimer
                 var resInfo = new ReserveData();
                 GetReserveTimeInfo(ref resInfo);
 
-                //EPGデータが読込まれていない場合も考慮し、先に判定する。
-                if (reserveInfo.IsEpgReserve == true && reserveInfo.IsSamePg(resInfo) == true)
+                if (reserveInfo.IsSamePg(resInfo))
                 {
-                    //EPG予約で、元の状態に戻る場合
-                    textBox_title.Text = reserveInfo.Title;
+                    //元プログラム予約でも番組が見つかる可能性がある
+                    resInfo = reserveInfo;
+
+                    //EPGデータが読込まれていない場合も考慮し、先に判定する。
+                    if (reserveInfo.IsEpgReserve)
+                    {
+                        //EPG予約で、元の状態に戻る場合
+                        textBox_title.Text = reserveInfo.Title;
+                        return;
+                    }
+                }
+                eventInfoNow = resInfo.GetPgInfo();
+                if (eventInfoNow == null)
+                {
+                    MessageBox.Show("変更可能な番組がありません。\r\n" +
+                                    "EPGの期間外か、EPGデータが読み込まれていません。");
+                    SetResModeProgram(true);
                 }
                 else
                 {
-                    eventInfoNow = resInfo.SearchEventInfoLikeThat();
-                    if (eventInfoNow == null)
-                    {
-                        MessageBox.Show("変更可能な番組がありません。\r\n" +
-                                        "EPGの期間外か、EPGデータが読み込まれていません。");
-                        SetResModeProgram(true);
-                    }
-                    else
-                    {
-                        SetReserveTimeInfo(CtrlCmdDefEx.ConvertEpgToReserveData(eventInfoNow));
-                    }
+                    SetReserveTimeInfo(eventInfoNow.ToReserveData());
                 }
             }
         }
@@ -468,31 +470,26 @@ namespace EpgTimer
             if (sender != e.OriginalSource) return;
 
             selectedTab = tabControl.SelectedIndex != -1 ? tabControl.SelectedIndex : selectedTab;
-            if (tabItem_program.IsSelected)
+            if (tabItem_program.IsSelected) RefreshProgramTab();
+        }
+        private void RefreshProgramTab(bool force = false)
+        {
+            var resInfo = new ReserveData();
+            GetReserveTimeInfo(ref resInfo);
+
+            //描画軽減。人の操作では気にするほどのことはないが、保険。
+            if (force = false && resInfo.IsSamePg(resInfoDisplay)) return;
+            resInfoDisplay = resInfo;
+
+            //EPGを自動で読み込んでない時でも、元と同じならその番組情報は表示させられるようにする
+            if (reserveInfo.IsSamePg(resInfo))
             {
-                var resInfo = new ReserveData();
-                GetReserveTimeInfo(ref resInfo);
-
-                //描画軽減。人の操作では気にするほどのことはないが、保険。
-                if (resInfo.IsSamePg(resInfoDisplay) == true) return;
-                resInfoDisplay = resInfo;
-
-                EpgEventInfo eventInfo = null;
-                //EPGを自動で読み込んでない時でも、元がEPG予約ならその番組情報は表示させられるようにする
-                if (reserveInfo.IsEpgReserve == true && reserveInfo.IsSamePg(resInfo) == true)
-                {
-                    eventInfo = eventInfoNow ?? reserveInfo.ReserveEventInfo();
-                }
-                else
-                {
-                    eventInfo = eventInfoNow ?? resInfo.SearchEventInfoLikeThat();
-                }
-
-                richTextBox_descInfo.Document = CommonManager.ConvertDisplayText(eventInfo);
+                resInfo = reserveInfo;
             }
+            richTextBox_descInfo.Document = CommonManager.ConvertDisplayText(eventInfoNow ?? resInfo.GetPgInfo());
         }
 
-        protected override DataItemViewBase DataView { get { return mainWindow.tunerReserveView.IsVisible == true ? mainWindow.tunerReserveView : base.DataView; } }
+        protected override DataItemViewBase DataView { get { return base.DataView ?? (mainWindow.reserveView.IsVisible == true ? (DataItemViewBase)mainWindow.reserveView : mainWindow.tunerReserveView.IsVisible == true ? mainWindow.tunerReserveView : null); } }
         protected override UInt64 DataID { get { return reserveInfo == null ? 0 : reserveInfo.ReserveID; } }
         protected override IEnumerable<KeyValuePair<UInt64, object>> DataRefList { get { return CommonManager.Instance.DB.ReserveList.OrderBy(d => d.Value.StartTimeActual).Select(d => new KeyValuePair<UInt64, object>(d.Key, d.Value)); } }
 
@@ -538,19 +535,20 @@ namespace EpgTimer
                 UpdateViewSelection(3);
             }
         }
-        protected override void MoveViewNextItem(int direction)
+        protected override void MoveViewNextItem(int direction, bool toRefData = false)
         {
             object NewData = null;
             if (DataView is EpgViewBase || DataView is SearchWindow.AutoAddWinListView)
             {
                 NewData = DataView.MoveNextReserve(direction, DataID, true, JumpItemStyle.None);
-                if (NewData != null)
+                if (NewData is ReserveData)
                 {
                     ChangeData(NewData);
                     return;
                 }
+                toRefData = true;
             }
-            base.MoveViewNextItem(direction);
+            base.MoveViewNextItem(direction,toRefData);
         }
     }
     public class ChgReserveWindowBase : ReserveWindowBase<ChgReserveWindow> { }
@@ -566,7 +564,7 @@ namespace EpgTimer
             get
             {
                 DataItemViewBase view = mainWindow.epgView.ActiveView;
-                return view != null && view.IsVisible == true ? view : mainWindow.reserveView.IsVisible == true ? mainWindow.reserveView : DataViewSearch;
+                return DataViewSearch ?? (view != null && view.IsVisible == true ? view : null);
             }
         }
         protected int SearchWinHash = 0;
@@ -581,7 +579,7 @@ namespace EpgTimer
                     SearchWinHash = 0;
                     return null;
                 }
-                return win.IsVisible == true ? win.DataListView : null;
+                return win.IsVisible == true && win.WindowState != WindowState.Minimized ? win.DataListView : null;
             }
 
         }

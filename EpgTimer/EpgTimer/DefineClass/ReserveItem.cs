@@ -14,15 +14,17 @@ namespace EpgTimer
         public override ulong DisplayID { get { return KeyID; } }
         public override object DataObj { get { return ReserveInfo; } }
 
+        private bool initEventInfo = false;
         public override EpgEventInfo EventInfo
         {
             get
             {
-                if (eventInfo == null)
+                if (initEventInfo == false)
                 {
                     if (ReserveInfo != null)
                     {
-                        eventInfo = ReserveInfo.ReserveEventInfo();
+                        eventInfo = ReserveInfo.GetPgInfo();
+                        initEventInfo = true;
                     }
                 }
                 return eventInfo;
@@ -164,18 +166,19 @@ namespace EpgTimer
         {
             get
             {
+                int idx = 0;
                 if (ReserveInfo != null)
                 {
                     if (ReserveInfo.IsOnRec() == true)
                     {
-                        return CommonManager.Instance.ResStatusColor[ReserveInfo.IsWatchMode ? 3 : 1];
+                        idx = ReserveInfo.IsWatchMode ? 3 : 1;
                     }
-                    if (ReserveInfo.IsOnAir() == true)
+                    else if (ReserveInfo.IsOnAir() == true)
                     {
-                        return CommonManager.Instance.ResStatusColor[2];
+                        idx = 2;
                     }
                 }
-                return CommonManager.Instance.ResStatusColor[0];
+                return Settings.BrushCache.ResStatusColor[idx];
             }
         }
     }

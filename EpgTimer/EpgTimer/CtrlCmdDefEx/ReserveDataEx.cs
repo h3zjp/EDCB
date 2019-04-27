@@ -57,23 +57,27 @@ namespace EpgTimer
         {
             get { return (UInt32)Math.Max(0, DurationSecond + StartMarginResActual + EndMarginResActual); }
         }
-        public Int32 StartMarginResActual
+        public virtual Int32 StartMarginResActual
         {
             get { return (Int32)Math.Max(-DurationSecond, RecSetting.StartMarginActual); }
         }
-        public Int32 EndMarginResActual
+        public virtual Int32 EndMarginResActual
         {
             get { return (Int32)Math.Max(-DurationSecond, RecSetting.EndMarginActual); }
         }
 
-        public EpgEventInfo ReserveEventInfo()
+        public EpgEventInfo GetPgInfo()
         {
-            return CommonManager.Instance.DB.GetReserveEventList(this);
-        }
+            //後段のサーチは変更ダイアログからのプログラム予約検索用も考慮
+            EpgEventInfo info = CommonManager.Instance.DB.GetReserveEventList(this);
+            if (info == null)
+            {
+                info = MenuUtil.GetPgInfoLikeThatAll(this);
 
-        public EpgEventInfo SearchEventInfoLikeThat()
-        {
-            return MenuUtil.SearchEventInfoLikeThat(this);
+                //予約の番組情報を補填。不用な情報なら勝手に無視する。
+                CommonManager.Instance.DB.AddReserveEventCache(this, info);
+            }
+            return info;
         }
 
         //AppendData 関係。ID(元データ)に対して一意の情報なので、データ自体はDB側。
@@ -105,7 +109,7 @@ namespace EpgTimer
         public override List<EpgAutoAddData> SearchEpgAutoAddList(bool? IsEnabled = null, bool ByFazy = false)
         {
             //プログラム予約の場合はそれっぽい番組を選んで、キーワード予約の検索にヒットしていたら選択する。
-            var info = IsEpgReserve == true ? this as IAutoAddTargetData : this.SearchEventInfoLikeThat();
+            var info = IsEpgReserve ? this as IAutoAddTargetData : this.GetPgInfo();
             return AutoAddTargetData.SearchEpgAutoAddHitList(info, IsEnabled, ByFazy);
         }
         public override List<EpgAutoAddData> GetEpgAutoAddList(bool? IsEnabled = null)
@@ -170,4 +174,12 @@ namespace EpgTimer
             IsAutoAddInvalid = (EpgAutoListEnabled.Count + ManualAutoListEnabled.Count) == 0;
         }
     }
+
+    //録画済み(RecFileInfo用)
+    public class ReserveDataEnd : ReserveData
+    {
+        public override Int32 StartMarginResActual { get { return 0; } }
+        public override Int32 EndMarginResActual { get { return 0; } }
+    }
+
 }

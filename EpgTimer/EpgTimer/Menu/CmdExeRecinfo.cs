@@ -48,19 +48,12 @@ namespace EpgTimer
         {
             if (dataList.Count == 0) return null;
 
-            EpgEventInfo info = null;
-            if (dataList[0].StartTime + TimeSpan.FromSeconds(dataList[0].DurationSecond)
-                    >= DateTime.UtcNow.AddHours(9) - TimeSpan.FromDays((Settings.Instance.EpgNoDisplayOld == true ? Settings.Instance.EpgNoDisplayOldDays : 15)))
+            ReserveData data = null;
+            if (CommonManager.Instance.DB.IsEventTimePossible(dataList[0].PgStartTime))
             {
-                info = new EpgEventInfo();
-                info.original_network_id = dataList[0].OriginalNetworkID;
-                info.transport_stream_id = dataList[0].TransportStreamID;
-                info.service_id = dataList[0].ServiceID;
-                info.event_id = dataList[0].EventID;
-                info.start_time = dataList[0].StartTime;
-                info.StartTimeFlag = 1;
+                data = dataList[0].ToReserveData();
             }
-            return info == null ? null : new SearchItem(info);
+            return data == null ? null : new ReserveItem(data);
         }
         protected override void mcs_ctxmLoading_switch(ContextMenu ctxm, MenuItem menu)
         {

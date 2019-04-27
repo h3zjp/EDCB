@@ -19,7 +19,7 @@ namespace EpgTimer
 
         public RecSettingView recSettingView { get; set; }
 
-        protected override int ItemCount { get { return dataList.Count + eventListEx.Count; } }
+        protected override int ItemCount { get { return dataList.Count  + eventListEx.Count + recinfoList.Count; } }
         protected bool HasList { get { return _getSearchList != null; } }
         protected bool IsMultiReserve { get { return eventList.Count != 0 && eventListEx.Count == 0; } }
         protected IAutoAddTargetData headData = null;//メニューオープン時に使用
@@ -27,6 +27,8 @@ namespace EpgTimer
         protected List<EpgEventInfo> eventList = new List<EpgEventInfo>();
         protected List<EpgEventInfo> eventListEx = new List<EpgEventInfo>();//reserveData(dataList)とかぶらないもの
         protected List<EpgEventInfo> eventListAdd { get { return IsMultiReserve == true ? eventList : eventListEx; } }
+        protected RecFileInfo headDataRec = null;//録画済みデータの場合
+        protected List<RecFileInfo> recinfoList = new List<RecFileInfo>();
 
         public CmdExeReserve(UIElement owner) : base(owner) { }
         protected override void SetData(bool IsAllData = false)
@@ -42,9 +44,16 @@ namespace EpgTimer
                 eventListEx = searchList.GetNoReserveList();
                 headData = searchList.Count == 0 ? null : searchList[0].IsReserved == true ? searchList[0].ReserveInfo as IAutoAddTargetData : searchList[0].EventInfo;
                 headDataEv = searchList.Count == 0 ? null : searchList[0].EventInfo;
+                recinfoList = eventList.SelectMany(data => MenuUtil.GetRecFileInfoList(data)).ToList();
+                headDataRec = MenuUtil.GetRecFileInfo(eventList.FirstOrDefault());
             }
             else
             {
+                //終了済み録画データの処理
+                recinfoList = dataList.OfType<ReserveDataEnd>().SelectMany(data => MenuUtil.GetRecFileInfoList(data)).ToList();
+                headDataRec = recinfoList.FirstOrDefault();
+                dataList.RemoveAll(data => data is ReserveDataEnd);
+
                 eventList = _getEpgEventList == null ? null : _getEpgEventList();
                 eventList = eventList == null ? new List<EpgEventInfo>() : eventList.OfType<EpgEventInfo>().ToList();
                 eventListEx = new List<EpgEventInfo>();
@@ -60,14 +69,17 @@ namespace EpgTimer
             }
             eventList = eventList.Distinct().ToList();
             eventListEx = eventListEx.Distinct().ToList();
+            recinfoList = recinfoList.Distinct().ToList();
         }
         protected override void ClearData()
         {
             base.ClearData();
             headData = null;
+            headDataRec = null;
             headDataEv = null;
             eventList.Clear();
             eventListEx.Clear();
+            recinfoList.Clear();
         }
         protected override object SelectSingleData(bool noChange = false)
         {
@@ -89,6 +101,10 @@ namespace EpgTimer
             {
                 IsCommandExecuted = true == MenuUtil.OpenChangeReserveDialog(dataList[0], EpgInfoOpenMode);
             }
+            else if (headDataRec != null && (eventListAdd.Count == 0 || eventListAdd[0].IsOver()))
+            {
+                IsCommandExecuted = true == MenuUtil.OpenRecInfoDialog(headDataRec);
+            }
             else if (eventListAdd.Count != 0)
             {
                 IsCommandExecuted = true == MenuUtil.OpenEpgReserveDialog(eventListAdd[0], EpgInfoOpenMode);
@@ -101,7 +117,7 @@ namespace EpgTimer
         protected override void mc_ChangeOnOff(object sender, ExecutedRoutedEventArgs e)
         {
             //多数アイテム処理の警告。合計数に対して出すので、結構扱いづらい。
-            if (MenuUtil.CautionManyMessage(this.ItemCount, "簡易予約/有効←→無効") == false) return;
+            if (MenuUtil.CautionManyMessage(dataList.Count + eventListEx.Count, "簡易予約/有効←→無効") == false) return;
 
             bool ret1 = MenuUtil.ReserveChangeOnOff(dataList, this.recSettingView, false);
             var eList = dataList.Count == 0 ? eventListEx :
@@ -151,14 +167,23 @@ namespace EpgTimer
         }
         protected override void mc_Delete(object sender, ExecutedRoutedEventArgs e)
         {
-            if (mcs_DeleteCheck(e) == false) return;
-            IsCommandExecuted = MenuUtil.ReserveDelete(dataList);
+            List<ReserveData> resList = dataList.ToList();
+            if (e.Command == EpgCmds.DeleteAll) recinfoList.Clear();
+            recinfoList = recinfoList.GetNoProtectedList();
+            dataList.AddRange(recinfoList.Select(info => new ReserveDataEnd { Title = "[録画済み] " + info.Title }));
+
+            if (mcs_DeleteCheck(e) == false || CmdExeRecinfo.mcs_DeleteCheckDelFile(recinfoList) == false) return;
+            IsCommandExecuted = MenuUtil.ReserveDelete(resList) && MenuUtil.RecinfoDelete(recinfoList);
         }
         protected override SearchItem mcs_GetSearchItem()
         {
             if (dataList.Count != 0)//予約情報優先
             {
                 return new ReserveItem(dataList[0]);
+            }
+            else if (recinfoList.Count != 0)//予約情報優先
+            {
+                return new ReserveItem(recinfoList[0].ToReserveData());
             }
             else if (eventList.Count != 0)
             {
@@ -170,13 +195,17 @@ namespace EpgTimer
         {
             return headData as ReserveData;
         }
+        protected override RecFileInfo mcs_GetRecInfoItem()
+        {
+            return headDataRec;
+        }
         protected override void mc_ToAutoadd(object sender, ExecutedRoutedEventArgs e)
         {
             ReserveData resData = null;
             IBasicPgInfo eventRefData = null;
             if (eventList.Count != 0)
             {
-                resData = CtrlCmdDefEx.ConvertEpgToReserveData(eventList[0]);
+                resData = eventList[0].ToReserveData();
                 if (dataList.Count != 0)
                 {
                     resData.RecSetting = dataList[0].RecSetting.DeepClone();
@@ -192,22 +221,34 @@ namespace EpgTimer
                 resData = dataList[0];
                 eventRefData = new ReserveItem(resData).EventInfo ?? (IBasicPgInfo)resData;
             }
+            else if(recinfoList.Count!=0)
+            {
+                eventRefData = recinfoList[0];
+            }
 
             var key = MenuUtil.SendAutoAddKey(eventRefData, CmdExeUtil.IsKeyGesture(e));
-            MenuUtil.SendAutoAdd(resData, CmdExeUtil.IsKeyGesture(e), key);
+            MenuUtil.SendAutoAdd(resData ?? eventRefData, CmdExeUtil.IsKeyGesture(e), key);
             IsCommandExecuted = true;
         }
         protected override void mc_Play(object sender, ExecutedRoutedEventArgs e)
         {
-            if (dataList.Count == 0) return;
-            CommonManager.Instance.FilePlay(dataList[0]);
+            if(CmdExeUtil.ReadIdData(e)==0)
+            {
+                if (dataList.Count == 0) return;
+                CommonManager.Instance.FilePlay(dataList[0]);
+            }
+            else
+            {
+                if (headDataRec == null) return;
+                CommonManager.Instance.FilePlay(headDataRec.RecFilePath);
+            }
             IsCommandExecuted = true;
         }
         protected override void mc_CopyTitle(object sender, ExecutedRoutedEventArgs e)
         {
             //番組情報優先
-            MenuUtil.CopyTitle2Clipboard(headDataEv.DataTitle, CmdExeUtil.IsKeyGesture(e));
-            IsCommandExecuted = true; //itemCount!=0 だが、この条件はこの位置では常に満たされている。
+            MenuUtil.CopyTitle2Clipboard((headDataEv ?? headDataRec).DataTitle, CmdExeUtil.IsKeyGesture(e));
+            IsCommandExecuted = true; 
         }
         protected override void mc_CopyContent(object sender, ExecutedRoutedEventArgs e)
         {
@@ -219,17 +260,21 @@ namespace EpgTimer
             {
                 MenuUtil.CopyContent2Clipboard(dataList[0], CmdExeUtil.IsKeyGesture(e));
             }
+            else if (recinfoList.Count != 0)
+            {
+                MenuUtil.CopyContent2Clipboard(recinfoList[0], CmdExeUtil.IsKeyGesture(e));
+            }
             IsCommandExecuted = true;
         }
         protected override void mc_InfoSearchTitle(object sender, ExecutedRoutedEventArgs e)
         {
             //番組情報優先
-            IsCommandExecuted = true == MenuUtil.OpenInfoSearchDialog(headDataEv.DataTitle, CmdExeUtil.IsKeyGesture(e));
+            IsCommandExecuted = true == MenuUtil.OpenInfoSearchDialog((headDataEv ?? headDataRec).DataTitle, CmdExeUtil.IsKeyGesture(e));
         }
         protected override void mc_SearchTitle(object sender, ExecutedRoutedEventArgs e)
         {
             //番組情報優先
-            MenuUtil.SearchTextWeb(headDataEv.DataTitle, CmdExeUtil.IsKeyGesture(e));
+            MenuUtil.SearchTextWeb((headDataEv ?? headDataRec).DataTitle, CmdExeUtil.IsKeyGesture(e));
             IsCommandExecuted = true;
         }
         protected override void mc_SetRecTag(object sender, ExecutedRoutedEventArgs e)
@@ -242,7 +287,7 @@ namespace EpgTimer
             var view = (menu.CommandParameter as EpgCmdParam).Code;
 
             //有効無効制御の追加分。予約データが無ければ無効
-            new List<ICommand> { EpgCmdsEx.ChgMenu, EpgCmds.CopyItem, EpgCmds.Delete, EpgCmds.DeleteAll, EpgCmds.Play, EpgCmds.SetRecTag }.ForEach(icmd =>
+            new List<ICommand> { EpgCmdsEx.ChgMenu, EpgCmds.CopyItem, EpgCmds.DeleteAll, EpgCmds.Play, EpgCmds.SetRecTag }.ForEach(icmd =>
             {
                 if (menu.Tag == icmd) menu.IsEnabled = dataList.Count != 0;
             });
@@ -260,6 +305,7 @@ namespace EpgTimer
             //switch使えないのでifで回す。
             if (menu.Tag == EpgCmds.ChgOnOff)
             {
+                menu.IsEnabled = dataList.Count + eventListEx.Count != 0;
                 menu.Header = view == CtxmCode.ReserveView || dataList.Count != 0 ? "予約←→無効" : "簡易予約";
                 //予約データの有無で切り替える。
                 if (dataList.Count == 0)
@@ -307,7 +353,22 @@ namespace EpgTimer
                 mcs_chgMenuOpening(menu);
                 mcs_SetSingleMenuEnabled(menu, headData is ReserveData);
             }
-            else if (menu.Tag == EpgCmds.JumpReserve || menu.Tag == EpgCmds.JumpTuner)
+            else if (menu.Tag == EpgCmds.Delete)
+            {
+                menu.IsEnabled = dataList.Any() || recinfoList.GetNoProtectedList().Any();
+            }
+            else if (menu.Tag == EpgCmds.JumpReserve)
+            {
+                mcs_ctxmLoading_jumpTabRes(menu);
+                menu.Visibility = mcs_GetNextReserve() != null || headDataEv == null || headDataEv.IsOver() == false ? Visibility.Visible : Visibility.Collapsed;
+            }
+            else if (menu.Tag == EpgCmds.JumpRecInfo)
+            {
+                //予約状況によってはJumpReserveと両方表示する場合もある
+                menu.IsEnabled = headDataRec != null;
+                menu.Visibility = menu.IsEnabled || headDataEv != null && headDataEv.IsOver() == true ? Visibility.Visible : Visibility.Collapsed;
+            }
+            else if (menu.Tag == EpgCmds.JumpTuner)
             {
                 mcs_ctxmLoading_jumpTabRes(menu);
             }
@@ -331,23 +392,33 @@ namespace EpgTimer
             }
             else if (menu.Tag == EpgCmds.Play)
             {
-                menu.IsEnabled = false;
-                var info = headData as ReserveData;
-                if (info != null && info.IsEnabled == true)
+                //予約状況によっては予約用と録画済み用の両方表示する場合もある
+                if ((menu.CommandParameter as EpgCmdParam).ID == 0)
                 {
-                    if (info.IsOnRec() == true)
+                    menu.IsEnabled = false;
+                    var info = headData as ReserveData;
+                    if (info != null && info.IsEnabled == true)
                     {
-                        menu.IsEnabled = true;
+                        if (info.IsOnRec() == true)
+                        {
+                            menu.IsEnabled = true;
+                        }
+                        else
+                        {
+                            menu.ToolTip = "まだ録画が開始されていません。";
+                        }
                     }
-                    else
-                    {
-                        menu.ToolTip = "まだ録画が開始されていません。";
-                    }
+                    menu.Visibility = menu.IsEnabled || (headDataEv is EpgEventInfo && !headDataEv.IsOver()) ? Visibility.Visible : Visibility.Collapsed;
+                }
+                else
+                {
+                    menu.IsEnabled = headDataRec != null;
+                    menu.Visibility = menu.IsEnabled || (headDataEv is EpgEventInfo && headDataEv.IsOver()) ? Visibility.Visible : Visibility.Collapsed;
                 }
             }
             else if (menu.Tag == EpgCmdsEx.OpenFolderMenu)
             {
-                mm.CtxmGenerateOpenFolderItems(menu, headData is ReserveData ? dataList[0].RecSetting : null);
+                mm.CtxmGenerateOpenFolderItems(menu, headData is ReserveData ? dataList[0].RecSetting : null, headDataRec != null ? headDataRec.RecFilePath : null);
             }
             else if (menu.Tag == EpgCmdsEx.ViewMenu)
             {
@@ -366,7 +437,7 @@ namespace EpgTimer
 
             string cmdMsg = cmdMessage[icmd];
 
-            int procCount = (icmd == EpgCmds.Add || icmd == EpgCmds.AddOnPreset) ? eventListAdd.Count : ItemCount;
+            int procCount = (icmd == EpgCmds.Add || icmd == EpgCmds.AddOnPreset) ? eventListAdd.Count : dataList.Count + eventListEx.Count;
             if (procCount == 0) return null;
 
             if (icmd == EpgCmds.ChgOnOff)

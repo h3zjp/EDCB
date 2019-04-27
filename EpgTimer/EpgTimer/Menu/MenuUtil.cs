@@ -32,7 +32,7 @@ namespace EpgTimer
 
         public static void CopyContent2Clipboard(ReserveData resInfo, bool NotToggle = false)
         {
-            EpgEventInfo info = resInfo == null ? null : resInfo.ReserveEventInfo();
+            EpgEventInfo info = resInfo == null ? null : resInfo.GetPgInfo();
             CopyContent2Clipboard(info, NotToggle);
         }
 
@@ -154,7 +154,7 @@ namespace EpgTimer
         /// <summary>
         /// 変換エラーの場合、デフォルト値を返し、テキストボックスの内容をデフォルト値に置き換える。
         /// </summary>
-        public static T MyToNumerical<T>(TextBox box, Func<string, T> converter, T defValue = default(T))
+        public static T MyToNumerical<T>(TextBox box, Func<string, T> converter, T defValue = default(T), bool setdef = true)
         {
             try
             {
@@ -162,15 +162,15 @@ namespace EpgTimer
             }
             catch
             {
-                box.Text = defValue.ToString();
+                if (setdef == true) box.Text = defValue.ToString();
                 return defValue;
             }
         }
-        public static T MyToNumerical<T>(TextBox box, Func<string, T> converter, T max, T min, T defValue = default(T)) where T : IComparable
+        public static T MyToNumerical<T>(TextBox box, Func<string, T> converter, T max, T min, T defValue = default(T), bool setdef = true) where T : IComparable
         {
             try
             {
-                T val = MyToNumerical(box, converter, defValue);
+                T val = MyToNumerical(box, converter, defValue, setdef);
                 if (val.CompareTo(min) < 0)
                 {
                     box.Text = min.ToString();
@@ -185,7 +185,7 @@ namespace EpgTimer
             }
             catch
             {
-                box.Text = defValue.ToString();
+                if (setdef == true) box.Text = defValue.ToString();
                 return defValue;
             }
         }
@@ -212,7 +212,7 @@ namespace EpgTimer
             foreach (EpgEventInfo item in itemlist)
             {
                 var resInfo = new ReserveData();
-                item.ConvertToReserveData(ref resInfo);
+                item.ToReserveData(ref resInfo);
                 resInfo.RecSetting = setInfo;//setInfoはコピーしなくても大丈夫。
                 list.Add(resInfo);
             }
@@ -338,7 +338,7 @@ namespace EpgTimer
             if (resMode == 0)//EPG予約へ変更
             {
                 list = itemlist.Where(item => item.ReserveMode == ReserveMode.KeywordAuto ||
-                    item.IsEpgReserve == false && item.SearchEventInfoLikeThat().ConvertToReserveData(ref item) == true).ToList();
+                    item.IsManual && item.GetPgInfo().ToReserveData(ref item) == true).ToList();
             }
             else if (resMode == 1)//プログラム予約へ変更
             {
@@ -357,7 +357,7 @@ namespace EpgTimer
         public static bool ReserveChangeResModeAutoAdded(List<ReserveData> itemList, AutoAddData autoAdd)
         {
             if (ReserveDelete(itemList, false) == false) return false;
-            return AutoAddChange(CommonUtil.ToList(autoAdd), false, false, true, true);
+            return AutoAddChange(autoAdd.IntoList(), false, false, true, true);
         }
 
         public static bool ReserveChange(List<ReserveData> itemlist, bool cautionMany = true, bool noHistory = false, bool noChkOnRec = false)
@@ -399,7 +399,7 @@ namespace EpgTimer
             int cMin = Settings.Instance.CautionOnRecMarginMin;
 
             List<string> list = itemlist.Select(item => CommonManager.Instance.DB.ReserveList.ContainsKey(item.ReserveID) == false ? item : CommonManager.Instance.DB.ReserveList[item.ReserveID])
-                .Where(item => item.IsEnabled == true && item.OnTime(DateTime.UtcNow.AddHours(9).AddMinutes(cMin)) >= 0)
+                .Where(item => item.IsEnabled == true && item.OnTime(CommonUtil.EdcbNowEpg.AddMinutes(cMin)) >= 0)
                 .Select(item => new ReserveItem(item).StartTime + "　" + item.Title).ToList();
 
             if (list.Count == 0) return true;
@@ -530,7 +530,7 @@ namespace EpgTimer
                 List<ReserveData> modList = (SyncAll == true ? syncList : AutoAddSyncModifyReserveList(syncList, itemlist));
 
                 int cMin = Settings.Instance.CautionOnRecChange == true ? Settings.Instance.CautionOnRecMarginMin : 1;
-                deleteList.AddRange(modList.FindAll(data => data.IsEnabled == true && data.OnTime(DateTime.UtcNow.AddHours(9).AddMinutes(cMin)) < 0));
+                deleteList.AddRange(modList.FindAll(data => data.IsEnabled == true && data.OnTime(CommonUtil.EdcbNowEpg.AddMinutes(cMin)) < 0));
                 syncList = syncList.Except(deleteList).ToList();
             }
 
@@ -589,8 +589,7 @@ namespace EpgTimer
             List<ReserveData> delReserveList = null, List<ReserveData> chgReserveList = null, bool cautionMany = true, bool isViewOrder = true, bool noHistory = false)
         {
             if (itemlist.Any() == false) return true;
-            //一時的に予約情報更新を遅延させる
-            return (bool)ViewUtil.MainWindow.ActionWaitResNotify(() => AutoAddCmdSendWork(itemlist, mode, delReserveList, chgReserveList, cautionMany, isViewOrder, noHistory));
+            return AutoAddCmdSendWork(itemlist, mode, delReserveList, chgReserveList, cautionMany, isViewOrder, noHistory);
         }
 
         //mode 0:追加、1:変更、2:削除
@@ -665,7 +664,7 @@ namespace EpgTimer
             //並べ替え不要
             if (list.Count == 0) return true;
 
-            var autoView = ViewUtil.MainWindow.autoAddView;
+            var autoView = CommonManager.MainWindow.autoAddView;
             var view = (list[0] is EpgAutoAddData) ? (AutoAddListView)autoView.epgAutoAddView : autoView.manualAutoAddView;
 
             if (changeID == true)
@@ -924,7 +923,10 @@ namespace EpgTimer
             try
             {
                 if (RecInfoDescWindow.ChangeDataLastUsedWindow(info) != null) return true;
-                new RecInfoDescWindow(info).Show();
+
+                //番組表でのダブルクリック時のフォーカス対策
+                Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() => new RecInfoDescWindow(info).Show()));
+
                 return true;
             }
             catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
@@ -946,48 +948,100 @@ namespace EpgTimer
             return null;
         }
 
-        public static EpgEventInfo SearchEventInfo(UInt64 pgKey)
+        public static EpgEventInfo GetPgInfoUid(UInt64 uid, Dictionary<UInt64, EpgEventInfo> currentList = null)
         {
-            if (CommonManager.Instance.DB.ServiceEventList.ContainsKey(pgKey >> 16) == false) return null;
-            //
-            UInt16 eventID = (ushort)pgKey;
-            return CommonManager.Instance.DB.ServiceEventList[pgKey >> 16].eventList.Find(info => info.event_id == eventID);
+            EpgEventInfo data;
+            (currentList ?? CommonManager.Instance.DB.EventUIDList).TryGetValue(uid, out data);
+            return data;
+        }
+        public static EpgEventInfo GetPgInfoUidAll(UInt64 uid)
+        {
+            //EPGが読み込まれているときなど
+            EpgEventInfo hit = GetPgInfoUid(uid);
+            if (hit != null) return hit;
+
+            //検索番組表の情報も探す
+            foreach (EpgView.EpgViewData viewData in CommonManager.MainWindow.epgView.GetAllEpgEventList())
+            {
+                if (viewData.IsEpgLoaded == false || viewData.EpgTabInfo.SearchMode == false) continue;
+                if (viewData.EventUIDList.TryGetValue(uid, out hit)) break;
+            }
+            return hit;
         }
 
-        public static EpgEventInfo SearchEventInfoLikeThat(IAutoAddTargetData item, bool includeArc = false)
+        public static EpgEventInfo GetPgInfoLikeThat(IAutoAddTargetData trg, IEnumerable<EpgServiceEventInfo> currentList = null, IEnumerable<EpgEventInfo> currentEventList = null)
         {
-            double dist = double.MaxValue;
-            EpgEventInfo eventPossible = null;
-
-            UInt64 key = item.Create64Key();
-            var eventDic = CommonManager.Instance.DB.ServiceEventList;
-            if (eventDic.ContainsKey(key) == true)
+            var eventList = new List<EpgEventInfo>();
+            UInt64 key = trg.Create64Key();
+            if (currentEventList != null)
             {
-                var eList = includeArc == true ? eventDic[key].eventMergeList : eventDic[key].eventList;
-                foreach (EpgEventInfo eventChkInfo in eList)
+                eventList = currentEventList.Where(info => info.Create64Key() == key).ToList();
+            }
+            else if (currentList != null)
+            {
+                EpgServiceEventInfo sInfo = currentList.FirstOrDefault(info => info.serviceInfo.Key == key);
+                if (sInfo != null)
                 {
-                    //itemが調べている番組に完全に含まれているならそれを選択する
-                    double overlapLength = CulcOverlapLength(item.PgStartTime, item.PgDurationSecond,
-                                                            eventChkInfo.start_time, eventChkInfo.durationSec);
-                    if (overlapLength > 0 && overlapLength == item.PgDurationSecond)
-                    {
-                        eventPossible = eventChkInfo;
-                        break;
-                    }
-
-                    //開始時間が最も近いものを選ぶ。同じ差なら時間が前のものを選ぶ
-                    double dist1 = Math.Abs((item.PgStartTime - eventChkInfo.start_time).TotalSeconds);
-                    if (overlapLength >= 0 && (dist > dist1 ||
-                        dist == dist1 && (eventPossible == null || item.PgStartTime > eventChkInfo.start_time)))
-                    {
-                        dist = dist1;
-                        eventPossible = eventChkInfo;
-                        if (dist == 0) break;
-                    }
+                    var sAllInfo = sInfo as EpgServiceAllEventInfo;
+                    eventList = sAllInfo != null ? sAllInfo.eventMergeList.ToList() : sInfo.eventList;
                 }
             }
+            else
+            {
+                EpgServiceAllEventInfo sInfo;
+                CommonManager.Instance.DB.ServiceEventList.TryGetValue(key, out sInfo);
+                if (sInfo != null) eventList = sInfo.eventMergeList.ToList();
+            }
 
-            return eventPossible;
+            EpgEventInfo hit = null;
+            
+            //イベントベースで見つかるならそれを返す
+            if ((UInt16)trg.Create64PgKey() != 0xFFFF)
+            {
+                UInt64 PgUID = trg.CurrentPgUID();
+                hit = eventList.Find(pg => pg.CurrentPgUID() == PgUID);
+                if (hit != null) return hit;
+            }
+
+            double dist = double.MaxValue;
+            foreach (EpgEventInfo eventChkInfo in eventList)
+            {
+                //itemが調べている番組に完全に含まれているならそれを選択する
+                double overlapLength = CulcOverlapLength(trg.PgStartTime, trg.PgDurationSecond,
+                                                        eventChkInfo.start_time, eventChkInfo.durationSec);
+                if (overlapLength > 0 && overlapLength == trg.PgDurationSecond)
+                {
+                    hit = eventChkInfo;
+                    break;
+                }
+
+                //開始時間が最も近いものを選ぶ。同じ差なら時間が前のものを選ぶ
+                double dist1 = Math.Abs((trg.PgStartTime - eventChkInfo.start_time).TotalSeconds);
+                if (overlapLength >= 0 && (dist > dist1 ||
+                    dist == dist1 && (hit == null || trg.PgStartTime > eventChkInfo.start_time)))
+                {
+                    dist = dist1;
+                    hit = eventChkInfo;
+                    if (dist == 0) break;
+                }
+            }
+            return hit;
+        }
+        public static EpgEventInfo GetPgInfoLikeThatAll(IAutoAddTargetData trg)
+        {
+            //EPGが読み込まれているときなど
+            EpgEventInfo hit = GetPgInfoLikeThat(trg);
+            if (hit != null) return hit;
+
+            //検索番組表の情報も探す
+            foreach (EpgView.EpgViewData viewData in CommonManager.MainWindow.epgView.GetAllEpgEventList())
+            {
+                if (viewData.IsEpgLoaded == false || viewData.EpgTabInfo.SearchMode == false) continue;
+                if (viewData.EventUIDList.TryGetValue(trg.CurrentPgUID(), out hit)) break;
+                hit = GetPgInfoLikeThat(trg, viewData.ServiceEventList);
+                if (hit != null) break;
+            }
+            return hit;
         }
 
         /// <summary>重複してない場合は負数が返る。</summary>
@@ -1017,15 +1071,28 @@ namespace EpgTimer
             return IsEnabled == null ? list : list.FindAll(data => data.IsEnabled == IsEnabled);
         }
 
+        public static RecFileInfo GetRecFileInfo(IAutoAddTargetData data)
+        {
+            List<RecFileInfo> list = GetRecFileInfoList(data);
+            return list == null ? null : list.FirstOrDefault();
+        }
+        public static List<RecFileInfo> GetRecFileInfoList(IAutoAddTargetData data)
+        {
+            if (data == null) return null;
+            List<RecFileInfo> list = null;
+            CommonManager.Instance.DB.RecFileUIDList.TryGetValue(data.CurrentPgUID(), out list);
+            return list ?? new List<RecFileInfo>();
+        }
+
         public static void JumpTab(object target, CtxmCode trg_code)
         {
             if (target == null) return;
             BlackoutWindow.SelectedData = target;
-            ViewUtil.MainWindow.moveTo_tabItem(trg_code);
+            CommonManager.MainWindow.moveTo_tabItem(trg_code);
         }
         public static bool CheckJumpTab(SearchItem target, bool switchTab = false)
         {
-            return ViewUtil.MainWindow.epgView.SearchJumpTargetProgram(target, !switchTab);
+            return CommonManager.MainWindow.epgView.SearchJumpTargetProgram(target, !switchTab);
         }
 
         public static void addGenre(MenuItem mi0, List<EpgContentData> contentList0, Action<ContentKindInfo> click0)

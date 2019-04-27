@@ -17,6 +17,8 @@ namespace EpgTimer
 {
     class CommonManager
     {
+        public static MainWindow MainWindow { get { return (MainWindow)Application.Current.MainWindow; } }
+
         public DBManager DB { get; private set; }
         public TVTestCtrlClass TVTestCtrl { get; private set; }
         public List<NotifySrvInfo> NotifyLogList { get; private set; }
@@ -24,6 +26,7 @@ namespace EpgTimer
         public System.Net.IPAddress NWConnectedIP { get; set; }
         public uint NWConnectedPort { get; set; }
         public bool IsConnected { get { return NWMode == false || Instance.NWConnectedIP != null; } }
+        public bool WaitingSrvReady { get; set; }
 
         MenuManager _mm;
         public MenuManager MM
@@ -56,9 +59,10 @@ namespace EpgTimer
             TVTestCtrl = new TVTestCtrlClass();
             NWMode = false;
             NotifyLogList = new List<NotifySrvInfo>();
+            WaitingSrvReady = false;
         }
 
-        public static readonly string[] DayOfWeekArray = new string[] { "日", "月", "火", "水", "木", "金", "土" };
+        public static readonly string[] DayOfWeekArray = Enumerable.Range(0, 7).Select(i => (new DateTime(2000, 1, 2 + i)).ToString("ddd")).ToArray();
         public static readonly string[] RecModeList = new string[] { "全サービス", "指定サービス", "全サービス(デコード処理なし)", "指定サービス(デコード処理なし)", "視聴", "無効" };
         public static readonly string[] RecEndModeList = new string[] { "何もしない", "スタンバイ", "休止", "シャットダウン" };
         public static readonly string[] YesNoList = new string[] { "しない", "する" };
@@ -353,6 +357,7 @@ namespace EpgTimer
 
         static CommonManager()
         {
+            ServiceTypeList[0x00] = "";
             ServiceTypeList[0x01] = "デジタルTVサービス";
             ServiceTypeList[0x02] = "デジタル音声サービス";
             ServiceTypeList[0xA1] = "臨時映像サービス";
@@ -402,6 +407,11 @@ namespace EpgTimer
             }
             return Key16;
         }
+        public static UInt64 Reverse64Key(UInt64 key64)
+        {
+            UInt16 Key16 = (UInt16)(key64 >> 16);
+            return chKey64to16Dic.FirstOrDefault(item => item.Value == Key16).Key;
+        }
         public static UInt64 Create64Key(UInt16 ONID, UInt16 TSID, UInt16 SID)
         {
             return ((UInt64)ONID) << 32 | ((UInt64)TSID) << 16 | (UInt64)SID;
@@ -410,17 +420,22 @@ namespace EpgTimer
         {
             return ((UInt64)ONID) << 48 | ((UInt64)TSID) << 32 | ((UInt64)SID) << 16 | (UInt64)EventID;
         }
-
-        public static String Convert64PGKeyString(UInt64 Key)
+        public static UInt64 CurrentPgUID(UInt64 key64Pg, DateTime startTime)
         {
-            return Convert64KeyString(Key >> 16) + "\r\n"
+            return (UInt64)(startTime.Ticks) & 0xFFFFFF0000000000 //分解能約1日
+                | ((UInt32)Create16Key(key64Pg >> 16)) << 16 | (UInt16)key64Pg;
+        }
+
+        public static String Convert64PGKeyString(UInt64 Key, string separator = "\r\n")
+        {
+            return Convert64KeyString(Key >> 16, separator) + separator
                 + ConvertEpgIDString("EventID", Key);
         }
-        public static String Convert64KeyString(UInt64 Key)
+        public static String Convert64KeyString(UInt64 Key, string separator = "\r\n", bool chDisplay = true)
         {
-            int chnum = ChSet5.ChNumber(Key);
-            return ConvertEpgIDString("OriginalNetworkID", Key >> 32) + "\r\n" +
-            ConvertEpgIDString("TransportStreamID", Key >> 16) + "\r\n" +
+            int chnum = chDisplay ? ChSet5.ChNumber(Key) : 0;
+            return ConvertEpgIDString("OriginalNetworkID", Key >> 32) + separator +
+            ConvertEpgIDString("TransportStreamID", Key >> 16) + separator +
             ConvertEpgIDString("ServiceID", Key) + (chnum == 0 ? "" : " [" + chnum + "ch]");
         }
         private static String ConvertEpgIDString(String Title, UInt64 id)
@@ -428,13 +443,16 @@ namespace EpgTimer
             return string.Format("{0} : {1} (0x{1:X4})", Title, (UInt16)id);
         }
 
-        public static Dictionary<char, List<KeyValuePair<string, string>>> ReplaceDictionaryNormal;
-        public static Dictionary<char, List<KeyValuePair<string, string>>> ReplaceDictionaryTitle;
-        public static void ReloadReplaceDictionary()
+        public static Dictionary<char, List<KeyValuePair<string, string>>> GetReplaceDictionaryNormal(EpgSetting set = null)
         {
-            ReplaceDictionaryTitle = CreateReplaceDictionary(Settings.Instance.EpgReplacePatternTitle, Settings.Instance.EpgReplacePatternTitleDef);
-            ReplaceDictionaryNormal = Settings.Instance.ShareEpgReplacePatternTitle == true ? ReplaceDictionaryTitle :
-                                     CreateReplaceDictionary(Settings.Instance.EpgReplacePattern, Settings.Instance.EpgReplacePatternDef);
+            set = set ?? Settings.Instance.EpgSettingList[0];
+            return set.ShareEpgReplacePatternTitle == true ? GetReplaceDictionaryTitle(set) :
+                                     CreateReplaceDictionary(set.EpgReplacePattern, set.EpgReplacePatternDef);
+        }
+        public static Dictionary<char, List<KeyValuePair<string, string>>> GetReplaceDictionaryTitle(EpgSetting set = null)
+        {
+            set = set ?? Settings.Instance.EpgSettingList[0];
+            return CreateReplaceDictionary(set.EpgReplacePatternTitle, set.EpgReplacePatternTitleDef);
         }
         private static Dictionary<char, List<KeyValuePair<string, string>>> CreateReplaceDictionary(string pattern, bool useDefDic)
         {
@@ -540,6 +558,8 @@ namespace EpgTimer
                     return "EpgTimerSrvがサポートしていないコマンドです。";
                 case ErrCode.CMD_ERR_CONNECT:
                     return "EpgTimerSrvに接続できませんでした。";
+                case ErrCode.CMD_ERR_DISCONNECT:
+                    return "EpgTimerSrvとの接続がリセットされた可能性があります。";
                 case ErrCode.CMD_ERR_TIMEOUT:
                     return "EpgTimerSrvとの接続にタイムアウトしました。";
                 case ErrCode.CMD_ERR_BUSY:
@@ -596,13 +616,13 @@ namespace EpgTimer
             if (Settings.Instance.LaterTimeUse == true)
             {
                 var time28 = new DateTime28(time, isUse28, ref_start);
-                return (isNoDay == true ? "" : time28.DateTimeMod.ToString((isNoYear == true ? "MM/dd(ddd) " : "yyyy/MM/dd(ddd) ")))
-                + time28.HourMod.ToString("00:") + time.ToString(isNoSecond == true ? "mm" : "mm:ss");
+                return (isNoDay == true ? "" : time28.DateTimeMod.ToString((isNoYear == true ? "MM\\/dd(ddd) " : "yyyy\\/MM\\/dd(ddd) ")))
+                + time28.HourMod.ToString("00\\:") + time.ToString(isNoSecond == true ? "mm" : "mm\\:ss");
             }
             else
             {
                 return time.ToString((isNoDay == true ? "" :
-                (isNoYear == true ? "MM/dd(ddd) " : "yyyy/MM/dd(ddd) ")) + (isNoSecond == true ? "HH:mm" : "HH:mm:ss"));
+                (isNoYear == true ? "MM\\/dd(ddd) " : "yyyy\\/MM\\/dd(ddd) ")) + (isNoSecond == true ? "HH\\:mm" : "HH\\:mm\\:ss"));
             }
         }
         public static String ConvertDurationText(uint duration, bool isNoSecond)
@@ -632,14 +652,19 @@ namespace EpgTimer
         {
             if (eventInfo == null) return "";
 
-            string retText = "";
-
-            UInt64 key = eventInfo.Create64Key();
-            if (ChSet5.ChList.ContainsKey(key) == true)
+            var ConvertChInfoText = new Func<EpgEventInfo, string>(info =>
             {
-                retText += ChSet5.ChList[key].ServiceName + "(" + ChSet5.ChList[key].NetworkName + ")" + "\r\n";
-            }
+                if (string.IsNullOrEmpty(info.ServiceName) == false)
+                {
+                    return info.ServiceName + "(" + info.NetworkName + ")";
+                }
+                else
+                {
+                    return Convert64KeyString(eventInfo.Create64Key(), " ", false);
+                }
+            });
 
+            string retText = ConvertChInfoText(eventInfo) + "\r\n";
             retText += ConvertTimeText(eventInfo) + "\r\n";
 
             string extText = "";
@@ -707,7 +732,7 @@ namespace EpgTimer
             retText += "\r\n";
 
             //音声
-            retText += "音声 :\r\n";
+            retText += "音声 :";
             if (eventInfo.AudioInfo != null)
             {
                 foreach (EpgAudioComponentInfoData info in eventInfo.AudioInfo.componentList)
@@ -768,20 +793,10 @@ namespace EpgTimer
                     retText += "イベントリレーあり：\r\n";
                     foreach (EpgEventData info in eventInfo.EventRelayInfo.eventDataList)
                     {
-                        retText += "→ ";
-                        ChSet5Item chInfo;
-                        if (ChSet5.ChList.TryGetValue(info.Create64Key(), out chInfo) == true)
-                        {
-                            retText += chInfo.ServiceName + "(" + chInfo.NetworkName + ")" + " ";
-                        }
-                        else
-                        {
-                            retText += ConvertEpgIDString("OriginalNetworkID", info.original_network_id) + " ";
-                            retText += ConvertEpgIDString("TransportStreamID", info.transport_stream_id) + " ";
-                            retText += ConvertEpgIDString("ServiceID", info.service_id) + " ";
-                        }
-                        var relayInfo = MenuUtil.SearchEventInfo(info.Create64PgKey());//過去番組は見つからないこともあるが構わない
-                        retText += ConvertEpgIDString(" EventID", info.event_id) + " " + (relayInfo == null ? "" : relayInfo.DataTitle) + "\r\n";
+                        //Epgデータが無いときや過去番組は探せない場合がある
+                        UInt64 key = CurrentPgUID(info.Create64PgKey(), eventInfo.PgStartTime.AddSeconds(eventInfo.PgDurationSecond));
+                        var relayInfo = MenuUtil.GetPgInfoUidAll(key) ?? new EpgEventInfo { original_network_id = info.original_network_id, transport_stream_id = info.transport_stream_id, service_id = info.service_id };
+                        retText += "→ " + ConvertChInfoText(relayInfo) + ConvertEpgIDString("  EventID", info.event_id) + " " + relayInfo.DataTitle + "\r\n";
                     }
                     retText += "\r\n";
                 }
@@ -990,21 +1005,17 @@ namespace EpgTimer
         public static List<CustomEpgTabInfo> CreateDefaultTabInfo()
         {
             //再表示の際の認識用に、負の仮番号を与えておく。
+            List<UInt64>[] spKeyList = EpgServiceInfo.SPKeyList.Select(key => key.IntoList()).ToArray();
             var setInfo = new[]
             {
-                new CustomEpgTabInfo(){ID = -1, TabName = "地デジ"},
-                new CustomEpgTabInfo(){ID = -2, TabName = "BS"},
-                new CustomEpgTabInfo(){ID = -3, TabName = "CS"},
-                new CustomEpgTabInfo(){ID = -4, TabName = "スカパー"},
-                new CustomEpgTabInfo(){ID = -5, TabName = "その他"},
+                new CustomEpgTabInfo(){ID = -1, TabName = "地デジ", ViewServiceList = spKeyList[0]},
+                new CustomEpgTabInfo(){ID = -2, TabName = "BS", ViewServiceList = spKeyList[1]},
+                new CustomEpgTabInfo(){ID = -3, TabName = "CS", ViewServiceList = spKeyList[2]},
+                new CustomEpgTabInfo(){ID = -4, TabName = "スカパー", ViewServiceList = spKeyList[3]},
+                new CustomEpgTabInfo(){ID = -5, TabName = "その他", ViewServiceList = spKeyList[4]},
             };
-
-            foreach (ChSet5Item info in ChSet5.ChListSelected)
-            {
-                setInfo[info.IsDttv ? 0 : info.IsBS ? 1 : info.IsCS ? 2 : info.IsSPHD ? 3 : 4].ViewServiceList.Add(info.Key);
-            }
-
-            return setInfo.Where(info => info.ViewServiceList.Count != 0).ToList();
+            var check = new HashSet<int>(ChSet5.ChList.Values.Select(info => info.IsDttv ? -1 : info.IsBS ? -2 : info.IsCS ? -3 : info.IsSPHD ? -4 : -5));
+            return setInfo.Where(info => check.Contains(info.ID)).ToList();
         }
         
         public static Paragraph createHyperLink(string text)
@@ -1300,127 +1311,6 @@ namespace EpgTimer
             catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
         }
 
-        //色関係の設定
-        public List<Brush> CustContentColorList { get; private set; }
-        public List<Brush> CustEpgResColorList { get; private set; }
-        public List<Brush> CustEpgResFillColorList { get; private set; }
-        public Brush CustTitle1Color { get; private set; }
-        public Brush CustTitle2Color { get; private set; }
-        public Brush CustTunerServiceColor { get; private set; }
-        public Brush CustTunerTextColor { get; private set; }
-        public List<Brush> CustTunerServiceColorPri { get; private set; }
-        public Brush TunerBackColor { get; private set; }
-        public Brush TunerTimeFontColor { get; private set; }
-        public Brush TunerTimeBackColor { get; private set; }
-        public Brush TunerTimeBorderColor { get; private set; }
-        public Brush TunerNameFontColor { get; private set; }
-        public Brush TunerNameBackColor { get; private set; }
-        public Brush TunerNameBorderColor { get; private set; }
-        public List<Brush> TunerResBorderColor { get; private set; }
-        public List<Brush> CustTimeColorList { get; private set; }
-        public Brush EpgServiceBackColor { get; private set; }
-        public Brush EpgBackColor { get; private set; }
-        public Brush EpgBorderColor { get; private set; }
-        public Brush EpgServiceFontColor { get; private set; }
-        public Brush EpgServiceBorderColor { get; private set; }
-        public Brush EpgTimeFontColor { get; private set; }
-        public Brush EpgTimeBorderColor { get; private set; }
-        public Brush EpgWeekdayBorderColor { get; private set; }
-        public List<Brush> ResBackColor { get; private set; }
-        public Brush ListDefForeColor { get; private set; }
-        public List<Brush> RecModeForeColor { get; private set; }
-        public List<Brush> ResStatusColor { get; private set; }
-        public List<Brush> RecEndBackColor { get; private set; }
-
-        //ReloadCustContentColorList()用のコンバートメソッド
-        private static SolidColorBrush CreateCustColorBrush(string name, uint cust = 0, byte a = 0xFF, int opacity = 100)
-        {
-            Color c = (name == "カスタム" ? ColorDef.FromUInt(cust) : ColorDef.ColorFromName(name));
-            a = name == "カスタム" ? c.A : a;
-            var brush = (c.A != 0 && (a != 0xFF || opacity != 100)) ?
-                new SolidColorBrush(Color.FromArgb((byte)(a * opacity / 100), c.R, c.G, c.B)) : new SolidColorBrush(c);
-            brush.Freeze();
-            return brush;
-        }
-        private static void SimpleColorSet(List<Brush> listBrush, List<string> listName, List<uint> listCust, int start = 0, int end = 0)
-        {
-            if (end <= 0) end = listName.Count;
-            for (int i = start; i < end; i++) listBrush.Add(CreateCustColorBrush(listName[i], listCust[i]));
-        }
-        public void ReloadCustContentColorList()
-        {
-            try
-            {
-                CustContentColorList = new List<Brush>();
-                CustEpgResColorList = new List<Brush>();
-                CustEpgResFillColorList = new List<Brush>();
-                CustTunerServiceColorPri = new List<Brush>();
-                CustTimeColorList = new List<Brush>();
-                TunerResBorderColor = new List<Brush>();
-                ResBackColor = new List<Brush>();
-                RecModeForeColor = new List<Brush>();
-                ResStatusColor = new List<Brush>();
-                RecEndBackColor = new List<Brush>();
-
-                SolidColorBrush brush;
-                for (int i = 0; i < Settings.Instance.ContentColorList.Count; i++)
-                {
-                    brush = CreateCustColorBrush(Settings.Instance.ContentColorList[i], Settings.Instance.ContentCustColorList[i]);
-                    CustContentColorList.Add(Settings.Instance.EpgGradation ? (Brush)ColorDef.GradientBrush(brush.Color) : brush);
-                }
-                
-                //0→50で塗りつぶしの不透明度が上がる
-                int fillOpacity = Math.Min(Settings.Instance.ReserveRectFillOpacity, 50) * 2;
-                //50→100で枠の不透明度が下がる
-                int strokeOpacity = Math.Min(100 - Settings.Instance.ReserveRectFillOpacity, 50) * 2;
-
-                for (int i = 0; i < Settings.Instance.EpgResColorList.Count; i++)
-                {
-                    CustEpgResColorList.Add(CreateCustColorBrush(Settings.Instance.EpgResColorList[i], Settings.Instance.EpgResCustColorList[i], 0xA0, strokeOpacity));
-                    CustEpgResFillColorList.Add(CreateCustColorBrush(Settings.Instance.EpgResColorList[i], Settings.Instance.EpgResCustColorList[i], 0xA0, fillOpacity));
-                }
-                CustTitle1Color = CreateCustColorBrush(Settings.Instance.TitleColor1, Settings.Instance.TitleCustColor1);
-                CustTitle2Color = CreateCustColorBrush(Settings.Instance.TitleColor2, Settings.Instance.TitleCustColor2);
-
-                CustTunerServiceColor = CreateCustColorBrush(Settings.Instance.TunerServiceColors[0], Settings.Instance.TunerServiceCustColors[0]);
-                CustTunerTextColor = CreateCustColorBrush(Settings.Instance.TunerServiceColors[1], Settings.Instance.TunerServiceCustColors[1]);
-                SimpleColorSet(CustTunerServiceColorPri, Settings.Instance.TunerServiceColors, Settings.Instance.TunerServiceCustColors, 2, 2 + 5);
-                TunerBackColor = CreateCustColorBrush(Settings.Instance.TunerServiceColors[7 + 0], Settings.Instance.TunerServiceCustColors[7 + 0]);
-                TunerTimeFontColor = CreateCustColorBrush(Settings.Instance.TunerServiceColors[7 + 2], Settings.Instance.TunerServiceCustColors[7 + 2]);
-                TunerTimeBackColor = CreateCustColorBrush(Settings.Instance.TunerServiceColors[7 + 3], Settings.Instance.TunerServiceCustColors[7 + 3]);
-                TunerTimeBorderColor = CreateCustColorBrush(Settings.Instance.TunerServiceColors[7 + 4], Settings.Instance.TunerServiceCustColors[7 + 4]);
-                TunerNameFontColor = CreateCustColorBrush(Settings.Instance.TunerServiceColors[7 + 5], Settings.Instance.TunerServiceCustColors[7 + 5]);
-                TunerNameBackColor = CreateCustColorBrush(Settings.Instance.TunerServiceColors[7 + 6], Settings.Instance.TunerServiceCustColors[7 + 6]);
-                TunerNameBorderColor = CreateCustColorBrush(Settings.Instance.TunerServiceColors[7 + 7], Settings.Instance.TunerServiceCustColors[7 + 7]);
-                SimpleColorSet(TunerResBorderColor, Settings.Instance.TunerServiceColors, Settings.Instance.TunerServiceCustColors, 7 + 8, 7 + 8 + 4);
-                TunerResBorderColor.Insert(0, CreateCustColorBrush(Settings.Instance.TunerServiceColors[7 + 1], Settings.Instance.TunerServiceCustColors[7 + 1]));
-
-                for (int i = 0; i < Settings.Instance.EpgEtcColors.Count; i++)
-                {
-                    brush = CreateCustColorBrush(Settings.Instance.EpgEtcColors[i], Settings.Instance.EpgEtcCustColors[i]);
-                    CustTimeColorList.Add(Settings.Instance.EpgGradationHeader ? (Brush)ColorDef.GradientBrush(brush.Color) : brush);
-                }
-
-                brush = CreateCustColorBrush(Settings.Instance.EpgEtcColors[4], Settings.Instance.EpgEtcCustColors[4]);
-                EpgServiceBackColor = Settings.Instance.EpgGradationHeader ? (Brush)ColorDef.GradientBrush(brush.Color, 1.0, 2.0) : brush;
-                EpgBackColor = CreateCustColorBrush(Settings.Instance.EpgEtcColors[5], Settings.Instance.EpgEtcCustColors[5]);
-                EpgBorderColor = CreateCustColorBrush(Settings.Instance.EpgEtcColors[6], Settings.Instance.EpgEtcCustColors[6]);
-                EpgServiceFontColor = CreateCustColorBrush(Settings.Instance.EpgEtcColors[7], Settings.Instance.EpgEtcCustColors[7]);
-                EpgServiceBorderColor = CreateCustColorBrush(Settings.Instance.EpgEtcColors[8], Settings.Instance.EpgEtcCustColors[8]);
-                EpgTimeFontColor = CreateCustColorBrush(Settings.Instance.EpgEtcColors[9], Settings.Instance.EpgEtcCustColors[9]);
-                EpgTimeBorderColor = CreateCustColorBrush(Settings.Instance.EpgEtcColors[10], Settings.Instance.EpgEtcCustColors[10]);
-                EpgWeekdayBorderColor = CreateCustColorBrush(Settings.Instance.EpgEtcColors[11], Settings.Instance.EpgEtcCustColors[11]);
-
-                ListDefForeColor = CreateCustColorBrush(Settings.Instance.ListDefColor, Settings.Instance.ListDefCustColor);
-
-                SimpleColorSet(RecModeForeColor, Settings.Instance.RecModeFontColors, Settings.Instance.RecModeFontCustColors);
-                SimpleColorSet(ResBackColor, Settings.Instance.ResBackColors, Settings.Instance.ResBackCustColors);
-                SimpleColorSet(ResStatusColor, Settings.Instance.StatColors, Settings.Instance.StatCustColors);
-                SimpleColorSet(RecEndBackColor, Settings.Instance.RecEndColors, Settings.Instance.RecEndCustColors);
-            }
-            catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
-        }
-
         const int NotifyLogMaxLocal = 8192 * 2;
         public static void AddNotifyLog(NotifySrvInfo notifyInfo)
         {
@@ -1433,7 +1323,7 @@ namespace EpgTimer
             {
                 String filePath = SettingPath.ModulePath + "\\Log";
                 Directory.CreateDirectory(filePath);
-                filePath += "\\EpgTimerNotify_" + DateTime.UtcNow.AddHours(9).ToString("yyyyMMdd") + ".log";
+                filePath += "\\EpgTimerNotify_" + CommonUtil.EdcbNow.ToString("yyyyMMdd") + ".log";
                 using (var file = new StreamWriter(filePath, true, Encoding.Unicode))
                 {
                     file.WriteLine(new NotifySrvInfoItem(notifyInfo));
@@ -1444,7 +1334,7 @@ namespace EpgTimer
         public static void ShowPlugInSetting(string pName, string pFolder, Visual vis)
         {
             string dllPath = Path.Combine(SettingPath.ModulePath, pFolder ?? "", pName ?? "");
-            CommonUtil.ShowPlugInSetting(dllPath, ((HwndSource)HwndSource.FromVisual(vis)).Handle);
+            CommonUtil.ShowPlugInSetting(dllPath, ((HwndSource)PresentationSource.FromVisual(vis)).Handle);
         }
 
         public static List<string> GetBonFileList()
@@ -1514,8 +1404,6 @@ namespace EpgTimer
             return src;
         }
 
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
         private static Process SrvSettingProcess = null;
 
         public static void OpenSrvSetting()
@@ -1530,7 +1418,7 @@ namespace EpgTimer
                 }
                 else
                 {
-                    SetForegroundWindow(SrvSettingProcess.MainWindowHandle);
+                    CommonUtil.SetForegroundWindow(SrvSettingProcess.MainWindowHandle);
                 }
             }
             catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
@@ -1547,7 +1435,7 @@ namespace EpgTimer
             wakeLog = wakeLog ?? new Dictionary<string, DateTime>();
 
             //録画中の予約と、録画が始まる予約を抽出
-            var now = DateTime.UtcNow.AddHours(9);
+            var now = CommonUtil.EdcbNowEpg;
             var start = now.AddMinutes(1 + Settings.Instance.RecAppWakeTime);
             var past = start.AddMinutes(-Settings.Instance.NoWakeUpHddMin);
             List<ReserveData> reslist = Instance.DB.ReserveList.Values.Where(info => info.RecSetting.RecMode < 4).ToList();

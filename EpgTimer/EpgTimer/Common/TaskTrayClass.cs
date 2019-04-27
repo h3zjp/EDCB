@@ -166,8 +166,8 @@ namespace EpgTimer
 
     public static class TrayManager
     {
-        private static TaskTrayClass taskTray = new TaskTrayClass();
-        public static TaskTrayClass Tray { get { return taskTray; } }
+        static TrayManager() { Tray= new TaskTrayClass(); }
+        public static TaskTrayClass Tray { get; private set; }
 
         private static uint srvState = uint.MaxValue;
         public static bool IsSrvLost { get { return srvState == uint.MaxValue; } }
@@ -198,7 +198,7 @@ namespace EpgTimer
                 }
                 else
                 {
-                    var PreRecTime = DateTime.UtcNow.AddHours(9).AddMinutes(Settings.Instance.RecAppWakeTime);
+                    var PreRecTime = CommonUtil.EdcbNowEpg.AddMinutes(Settings.Instance.RecAppWakeTime);
                     isOnPreRec = sortList[0].OnTime(PreRecTime) >= 0;
                     if (isOnPreRec == true) //録画準備中
                     {
@@ -225,13 +225,13 @@ namespace EpgTimer
                 if (first.IsWatchMode == true) infoText = infoText.Replace("録画", "視聴");
             }
 
-            taskTray.Text = infoText;
+            Tray.Text = infoText;
 
-            if      (IsSrvLost == true)  taskTray.IconUri = new Uri("pack://application:,,,/Resources/TaskIconGray.ico");
-            else if (srvState == 1)      taskTray.IconUri = new Uri("pack://application:,,,/Resources/TaskIconRed.ico");
-            else if (isOnPreRec == true) taskTray.IconUri = new Uri("pack://application:,,,/Resources/TaskIconOrange.ico");
-            else if (srvState == 2)      taskTray.IconUri = new Uri("pack://application:,,,/Resources/TaskIconGreen.ico");
-            else                         taskTray.IconUri = new Uri("pack://application:,,,/Resources/EpgTimer_Bon_Vista_blue_rev2.ico");
+            if      (IsSrvLost == true)  Tray.IconUri = new Uri("pack://application:,,,/Resources/TaskIconGray.ico");
+            else if (srvState == 1)      Tray.IconUri = new Uri("pack://application:,,,/Resources/TaskIconRed.ico");
+            else if (isOnPreRec == true) Tray.IconUri = new Uri("pack://application:,,,/Resources/TaskIconOrange.ico");
+            else if (srvState == 2)      Tray.IconUri = new Uri("pack://application:,,,/Resources/TaskIconGreen.ico");
+            else                         Tray.IconUri = new Uri("pack://application:,,,/Resources/EpgTimer_Bon_Vista_blue_rev2.ico");
         }
     }
 }

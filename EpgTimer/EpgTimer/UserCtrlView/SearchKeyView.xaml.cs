@@ -164,7 +164,7 @@ namespace EpgTimer
         private void comboBox_KeyUp(object sender, KeyEventArgs e, List<string> log)
         {
             var box = sender as ComboBox;
-            if (e.Key == Key.Delete && box.IsDropDownOpen)
+            if (e.Handled == false && Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Delete && box.IsDropDownOpen)
             {
                 int i = box.SelectedIndex;
                 if (i >= 0)
@@ -173,6 +173,7 @@ namespace EpgTimer
                     box.SelectedIndex = Math.Min(i, box.Items.Count - 1);
                     SaveSearchLogSettings(box, log);
                 }
+                e.Handled = true;
             }
         }
         private void ClearSerchLog(ComboBox box, List<string> log)
@@ -284,6 +285,7 @@ namespace EpgTimer
             stackPanel_PresetEdit.Visibility = chgMode == int.MaxValue ? Visibility.Collapsed : Visibility.Visible;
             Button_clearAndKey.ToolTip = chgMode == int.MaxValue ? SearchKeyView.ClearButtonTooltip : null;
             Button_clearNotKey.ToolTip = Button_clearAndKey.ToolTip;
+            checkBox_noArcSearch.IsEnabled = chgMode != int.MaxValue;
         }
 
         private void button_content_add_Click(object sender, RoutedEventArgs e)
@@ -320,7 +322,7 @@ namespace EpgTimer
         {
             serviceList.ForEach(info => info.IsSelected = info.ServiceInfo.IsVideo);
         }
-        private void SelectService(Func<ChSet5Item, bool> predicate)
+        private void SelectService(Func<EpgServiceInfo, bool> predicate)
         {
             serviceList.FindAll(info => predicate(info.ServiceInfo)).ForEach(info => info.IsSelected = true);
         }
@@ -388,12 +390,12 @@ namespace EpgTimer
             //これはダイアログの設定なので即座に反映
             Settings.Instance.SetWithoutSearchKeyWord = (checkBox_setWithoutSearchKeyWord.IsChecked == true);
         }
-    }
 
-    public class DateItem
-    {
-        public DateItem(EpgSearchDateInfo info) { DateInfo = info; }
-        public EpgSearchDateInfo DateInfo { get; private set; }
-        public override string ToString() { return CommonManager.ConvertTimeText(DateInfo); }
+        private class DateItem
+        {
+            public DateItem(EpgSearchDateInfo info) { DateInfo = info; }
+            public EpgSearchDateInfo DateInfo { get; private set; }
+            public override string ToString() { return CommonManager.ConvertTimeText(DateInfo); }
+        }
     }
 }

@@ -34,7 +34,7 @@ namespace EpgTimer.BoxExchangeEdit
         public bool DuplicationAllAllowed { private set; get; }//項目の重複を全て許可
         public IEnumerable<object> DuplicationSpecific { private set; get; }//特定の項目のみ重複を許可
         public Func<object, object> ItemDuplicator { private set; get; }//重複を許可する場合必要
-        public IEqualityComparer<object> ItemComparer { private set; get; }//重複を許可する場合必要
+        public IEqualityComparer<object> ItemComparer { set; get; }//重複を許可する場合必要。規定のEqualsをoverrideするとスクロールに支障が出るので注意。
 
         /// <summary>重複を許可。supecific未指定なら全て許可。きちんと動かすなら、duplicator、comparerが必要。</summary>
         public void AllowDuplication(IEnumerable<object> supecific = null, Func<object, object> duplicator = null, IEqualityComparer<object> comparer = null)
@@ -57,7 +57,7 @@ namespace EpgTimer.BoxExchangeEdit
             //
             box.PreviewKeyDown += new KeyEventHandler((sender, e) =>
             {
-                if (Keyboard.Modifiers != ModifierKeys.None) return;
+                if (e.Handled || Keyboard.Modifiers != ModifierKeys.None) return;
                 //
                 switch (e.Key)
                 {
@@ -78,7 +78,7 @@ namespace EpgTimer.BoxExchangeEdit
             //
             box.PreviewKeyDown += new KeyEventHandler((sender, e) =>
             {
-                if (Keyboard.Modifiers != ModifierKeys.None) return;
+                if (e.Handled || Keyboard.Modifiers != ModifierKeys.None) return;
                 //
                 switch (e.Key)
                 {
@@ -111,17 +111,10 @@ namespace EpgTimer.BoxExchangeEdit
 
             box.KeyDown += new KeyEventHandler((sender, e) =>
             {
-                if (Keyboard.Modifiers != ModifierKeys.None) return;
-                //
-                switch (e.Key)
+                if (e.Handled == false && e.Key == Key.Escape && e.IsRepeat == false && box.SelectedIndex >= 0)
                 {
-                    case Key.Escape:
-                        if (box.SelectedIndex >= 0)
-                        {
-                            box.UnselectAll();
-                            e.Handled = true;
-                        }
-                        break;
+                    box.UnselectAll();
+                    e.Handled = true;
                 }
             });
         }

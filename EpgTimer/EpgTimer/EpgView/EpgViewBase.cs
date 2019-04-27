@@ -2,61 +2,96 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 
 namespace EpgTimer.EpgView
 {
-    public class EpgViewData
+    public interface IEpgViewDataSet
+    {
+        void SetViewData(EpgViewData data);
+    }
+    public class EpgViewData : IEpgSettingAccess
     {
         //表示形式間で番組表定義と番組リストを共有する
         //EpgTimerNWで検索絞り込みを使用時に多少効果があるくらいだが‥
         public EpgViewData()
         {
             EpgTabInfo = new CustomEpgTabInfo();
+            viewFunc = new EpgDataView.EpgDataViewInterface(null);
             ClearEventList();
         }
-        public CustomEpgTabInfo EpgTabInfo { get; set; }
+        public void ClearEventList()
+        {
+            ServiceEventList = new List<EpgServiceEventInfo>();
+            EventUIDList = new Dictionary<UInt64, EpgEventInfo>();
+            IsEpgLoaded = false;
+        }
+        public EpgDataView.EpgDataViewInterface viewFunc { get; set; }
+        private CustomEpgTabInfo epgTabInfo;
+        public CustomEpgTabInfo EpgTabInfo
+        {
+            get { return epgTabInfo; }
+            set
+            {
+                epgTabInfo = value;
+                EpgSettingIndex = epgTabInfo.EpgSettingIndex;
+                ReplaceDictionaryNormal = CommonManager.GetReplaceDictionaryNormal(this.EpgStyle());
+                ReplaceDictionaryTitle = CommonManager.GetReplaceDictionaryTitle(this.EpgStyle());
+                DefPeriod = new EpgViewPeriodDef(this.EpgStyle());
+                Period = DefPeriod.DefPeriod;
+            }
+        }
+        public bool HasKey(UInt64 key) { return KeyList.Contains(key); }
+        public IEnumerable<UInt64> KeyList { get { return IsEpgLoaded ? ServiceEventList.Select(info => info.serviceInfo.Key) : CommonManager.Instance.DB.ExpandSpecialKey(EpgTabInfo.ViewServiceList); } }
         public bool IsEpgLoaded { get; private set; }
         public List<EpgServiceEventInfo> ServiceEventList { get; private set; }
-        public void ClearEventList() { ServiceEventList = new List<EpgServiceEventInfo>(); IsEpgLoaded = false; }
-        public event Action<int> ViewSettingClick = (param) => { };
-        public void ViewSetting(int param) { ViewSettingClick(param); }
+        public Dictionary<UInt64, EpgEventInfo> EventUIDList { get; private set; }
 
-        public bool ReloadEpgData()
+        public int EpgSettingIndex { get; private set; }
+        public Dictionary<char, List<KeyValuePair<string, string>>> ReplaceDictionaryNormal { get; private set; }
+        public Dictionary<char, List<KeyValuePair<string, string>>> ReplaceDictionaryTitle { get; private set; }
+
+        public EpgViewPeriodDef DefPeriod;
+        public EpgViewPeriod Period;
+        public bool IsDefPeriod = true;
+
+        public bool ReloadEpgData(EpgViewPeriod newPeriod = null, bool noMsg = false)
         {
             try
             {
-                if (IsEpgLoaded == true) return true;
+                newPeriod = newPeriod ?? DefPeriod.DefPeriod;
+                if (Period.Equals(newPeriod) == true && IsEpgLoaded == true) return true;
+
+                if (CommonManager.Instance.WaitingSrvReady == true)
+                {
+                    StatusManager.StatusNotifySet("EpgTimerSrv準備完了待ち");
+                    return false;
+                }
                 if (CommonManager.Instance.IsConnected == false) return false;
 
-                Dictionary<UInt64, EpgServiceAllEventInfo> serviceDic;
+                ErrCode err;
+                var serviceDic = new Dictionary<UInt64, EpgServiceAllEventInfo>();
                 if (EpgTabInfo.SearchMode == false)
                 {
-                    ErrCode err = CommonManager.Instance.DB.ReloadEpgData();
-                    if (CommonManager.CmdErrMsgTypical(err, "EPGデータの取得", err == ErrCode.CMD_ERR_BUSY ?
-                                                            "EPGデータの読み込みを行える状態ではありません。\r\n(EPGデータ読み込み中など)" :
-                                                            "エラーが発生しました。\r\nEPGデータが読み込まれていない可能性があります。") == false) return false;
-                    serviceDic = CommonManager.Instance.DB.ServiceEventList;
+                    err = CommonManager.Instance.DB.LoadEpgData(ref serviceDic, newPeriod, EpgTabInfo.ViewServiceList);
                 }
                 else
                 {
                     //番組情報の検索
-                    var list = new List<EpgEventInfo>();
-                    ErrCode err = CommonManager.CreateSrvCtrl().SendSearchPg(CommonUtil.ToList(EpgTabInfo.GetSearchKeyReloadEpg()), ref list);
-                    if (CommonManager.CmdErrMsgTypical(err, "EPGデータの取得") == false) return false;
-
-                    //サービス毎のリストに変換
-                    serviceDic = list.GroupBy(info => info.Create64Key())
-                        .Where(gr => ChSet5.ChList.ContainsKey(gr.Key) == true)
-                        .ToDictionary(gr => gr.Key, gr => new EpgServiceAllEventInfo(ChSet5.ChList[gr.Key].ToInfo(), gr.ToList()));
+                    err = CommonManager.Instance.DB.SearchPgLists(EpgTabInfo.GetSearchKeyReloadEpg().IntoList(), ref serviceDic, newPeriod);
                 }
+                if ((noMsg && err != ErrCode.CMD_SUCCESS) 
+                    || CommonManager.CmdErrMsgTypical(err, "EPGデータの取得", err == ErrCode.CMD_ERR_BUSY ?
+                    "EPGデータの読み込みを行える状態ではありません。\r\n(EPGデータ読み込み中など)" :
+                    "エラーが発生しました。\r\nEPGデータが読み込まれていない可能性があります。") == false) return false;
 
                 //並び順はViewServiceListによる。eventListはこの後すぐ作り直すのでとりあえずそのままもらう。
-                ServiceEventList = EpgTabInfo.ViewServiceList.Distinct()
-                    .Where(id => serviceDic.ContainsKey(id) == true).Select(id => serviceDic[id])
-                    .Select(info => new EpgServiceEventInfo { serviceInfo = info.serviceInfo, eventList = info.eventMergeList }).ToList();
+                ServiceEventList = CommonManager.Instance.DB.ExpandSpecialKey(EpgTabInfo.ViewServiceList, serviceDic.Values.Select(info => info.serviceInfo))
+                    .Where(id => serviceDic.ContainsKey(id)).Select(id => serviceDic[id])
+                    .Select(info => new EpgServiceEventInfo { serviceInfo = info.serviceInfo, eventList = info.eventMergeList.ToList() }).ToList();
 
-                var keyTime = DateTime.UtcNow.AddHours(9).AddDays(-Settings.Instance.EpgNoDisplayOldDays);
+                EventUIDList = new Dictionary<ulong, EpgEventInfo>();
                 var viewContentMatchingHash = new HashSet<UInt32>(EpgTabInfo.ViewContentList.Select(d => d.MatchingKeyList).SelectMany(x => x));
                 foreach (EpgServiceEventInfo item in ServiceEventList)
                 {
@@ -65,17 +100,20 @@ namespace EpgTimer.EpgView
                         (eventInfo.StartTimeFlag != 0)
 
                         //自動登録されたりするので、サービス別番組表では表示させる
-                            //&& (eventInfo.IsGroupMainEvent == true)
+                        //&& (eventInfo.IsGroupMainEvent == true)
 
-                        //過去番組表示抑制
-                        && (Settings.Instance.EpgNoDisplayOld == false || eventInfo.IsOver(keyTime) == false)
+                        //表示抑制
+                        && (eventInfo.IsOver(newPeriod.Start) == false && eventInfo.PgStartTime < newPeriod.End)
 
                         //ジャンル絞り込み
                         && (ViewUtil.ContainsContent(eventInfo, viewContentMatchingHash, EpgTabInfo.ViewNotContentFlag) == true)
                     );
+                    item.eventList.ForEach(data => EventUIDList[data.CurrentPgUID()] = data);
                 }
 
                 IsEpgLoaded = true;
+                Period = newPeriod.DeepClone();
+                IsDefPeriod = Period.Equals(DefPeriod.DefPeriod);
                 return true;
             }
             catch (Exception ex) { CommonUtil.DispatcherMsgBoxShow(ex.Message + "\r\n" + ex.StackTrace); }
@@ -85,7 +123,7 @@ namespace EpgTimer.EpgView
 
     public class EpgViewState { public int viewMode; }
 
-    public class EpgViewBase : DataItemViewBase
+    public class EpgViewBase : DataItemViewBase, IEpgSettingAccess, IEpgViewDataSet
     {
         public static event ViewUpdatedHandler ViewReserveUpdated = null;
 
@@ -94,34 +132,66 @@ namespace EpgTimer.EpgView
         protected bool RefreshMenuFlg = true;
 
         protected EpgViewState restoreState = null;
-        public virtual EpgViewState GetViewState() { return null; }
+        protected class StateBase : EpgViewState
+        {
+            public DateTime? scrollTime = null;
+            public EpgViewPeriod period = null;
+            public bool? isDefPeriod = null;
+            public bool? isJumpDate = null;
+
+            public StateBase() { }
+            public StateBase(EpgViewBase view)
+            {
+                viewMode = view.viewMode;
+                period = view.ViewPeriod.DeepClone();
+                isDefPeriod = view.IsDataDefPeriod;
+            }
+        }
         public virtual void SetViewState(EpgViewState data) { restoreState = data; }
+        public virtual EpgViewState GetViewState() { return new StateBase(this); }
+        protected StateBase RestoreState { get { return restoreState as StateBase ?? new StateBase(); } }
 
         //表示形式間で番組表定義と番組リストを共有する
         //EpgTimerNWで検索絞り込みを使用時に多少効果があるくらいだが‥
         protected EpgViewData viewData = new EpgViewData();
+        protected EpgDataView.EpgDataViewInterface viewFunc { get { return viewData.viewFunc; } }
         protected int viewMode = 0;//最初に設定した後は固定するコード。
-        public void SetViewData(EpgViewData data, int mode) { viewData = data; viewMode = mode; }
+        public void SetViewData(EpgViewData data, int mode)
+        {
+            viewMode = mode;
+            SetViewData(data);
+        }
+        public virtual void SetViewData(EpgViewData data)
+        {
+            viewData = data;
+            ViewPeriod = DataPeriod.DeepClone(); ;
+        }
         protected CustomEpgTabInfo viewInfo { get { return viewData.EpgTabInfo; } }
         protected virtual bool viewCustNeedTimeOnly { get { return viewInfo.NeedTimeOnlyBasic; } }
+        public int EpgSettingIndex { get { return viewData.EpgSettingIndex; } }
+        protected bool IsDataDefPeriod { get { return viewData.IsDefPeriod; } }
+        protected EpgViewPeriodDef DefPeriod { get { return viewData.DefPeriod; } }
+        protected EpgViewPeriod ViewPeriod = new EpgViewPeriod();
+        protected EpgViewPeriod DataPeriod { get { return viewData.Period; } }
+        protected bool IsJumpPanelOpened { get { return viewFunc.IsJumpPanelOpened; } set { viewFunc.IsJumpPanelOpened = value; } }
         protected List<EpgServiceEventInfo> serviceEventList { get { return viewData.ServiceEventList; } }
-        protected List<EpgServiceEventInfo> serviceEventListOrderAdjust
+        protected List<EpgServiceInfo> serviceListOrderAdjust
         {
             get
             {
-                var grpList = new SortedList<ulong, EpgServiceEventInfo>();
-                var ordered = new List<EpgServiceEventInfo>();
+                var grpList = new SortedList<ulong, EpgServiceInfo>();
+                var ordered = new List<EpgServiceInfo>();
                 var back = new EpgServiceInfo();
-                viewData.ServiceEventList.ForEach(info =>
+                foreach (EpgServiceInfo info in serviceEventList.Select(item => item.serviceInfo))
                 {
-                    if (info.serviceInfo.ONID != back.ONID || info.serviceInfo.TSID != back.TSID || info.serviceInfo.SID > back.SID)
+                    if (info.ONID != back.ONID || info.TSID != back.TSID || info.SID > back.SID)
                     {
                         ordered.AddRange(grpList.Values);
                         grpList.Clear();
-                        back = info.serviceInfo;
+                        back = info;
                     }
-                    grpList[info.serviceInfo.SID] = info;
-                });
+                    grpList[info.SID] = info;
+                }
                 ordered.AddRange(grpList.Values);
                 return ordered;
             }
@@ -138,12 +208,15 @@ namespace EpgTimer.EpgView
             mc = new CmdExeReserve(this);
 
             //コマンド集にないものを登録
-            mc.AddReplaceCommand(EpgCmds.ViewChgSet, (sender, e) => viewData.ViewSetting(-1));
-            mc.AddReplaceCommand(EpgCmds.ViewChgReSet, (sender, e) => viewData.ViewSetting(-2));
+            mc.AddReplaceCommand(EpgCmds.ViewChgSet, (sender, e) => viewFunc.ViewSetting(-1));
+            mc.AddReplaceCommand(EpgCmds.ViewChgReSet, (sender, e) => viewFunc.ViewSetting(-2));
             mc.AddReplaceCommand(EpgCmds.ViewChgMode, mc_ViewChgMode);
 
             //コマンド集を振り替えるもの
             mc.AddReplaceCommand(EpgCmds.JumpTable, mc_JumpTable);
+
+            //過去番組関係
+            ViewPeriod = DefPeriod.DefPeriod;
         }
 
         //表示設定関係
@@ -158,7 +231,7 @@ namespace EpgTimer.EpgView
                 //コマンド集の機能による各ビューの共用メソッド。
                 BlackoutWindow.SelectedData = mc.GetJumpTabItem();
 
-                viewData.ViewSetting(param.ID);
+                viewFunc.ViewSetting(param.ID);
             }
             catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
         }
@@ -169,9 +242,14 @@ namespace EpgTimer.EpgView
 
             param.ID = 0;//実際は設定するまでもなく、初期値0。
             BlackoutWindow.NowJumpTable = true;
-            new BlackoutWindow(ViewUtil.MainWindow).showWindow(ViewUtil.MainWindow.tabItem_epg.Header.ToString());
-
             mc_ViewChgMode(sender, e);
+
+            //EPG画面でのフォーカス対策。若干ウィンドウの表示タイミングが微妙だが、とりあえずこれで解決する。
+            //切替え自体は上のmc_ViewChgMode()が行っており、このコードはスプラッシュを表示するだけ。
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                new BlackoutWindow(CommonManager.MainWindow).showWindow(CommonManager.MainWindow.tabItem_epg.Header.ToString());
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         public void UpdateMenu(bool refesh = true)
@@ -189,11 +267,96 @@ namespace EpgTimer.EpgView
         }
         protected virtual void RefreshMenuInfo()
         {
-            mc.EpgInfoOpenMode = Settings.Instance.EpgInfoOpenMode;
+            mc.EpgInfoOpenMode = this.EpgStyle().EpgInfoOpenMode;
         }
 
         /// 保存関係
         public virtual void SaveViewData() { }
+
+        //表示期間変更関係
+        //mode: -1=戻る、+1=進む
+        protected TimeJumpView jumpPanel = null;
+        protected TimeMoveView movePanel = null;
+        protected Button buttonNow = null;
+        protected void SetControlsPeriod(TimeJumpView tj, TimeMoveView tm, Button bn)
+        {
+            jumpPanel = tj;
+            movePanel = tm;
+            buttonNow = bn;
+
+            jumpPanel.JumpDateClick += JumpDate;
+            jumpPanel.SetViewData(viewData);
+            movePanel.OpenToggleClick += MovePanel_OpenToggleClick;
+            movePanel.MoveButtonClick += MovePanel_MoveButtonClick;
+            movePanel.MoveButtonToolTipOpen += MovePanel_MoveButtonTooltip;
+            buttonNow.Click += (sender, e) => NowTimeClick(true);
+        }
+
+        private void MovePanel_OpenToggleClick(bool isOpen)
+        {
+            IsJumpPanelOpened = isOpen;
+            RefreshMoveButtonStatus();
+        }
+        protected virtual void MovePanel_MoveButtonClick(int mode)
+        {
+            SetJumpState();
+            JumpDate(MoveTimeTarget(mode));
+        }
+        protected virtual void SetJumpState() { }
+        protected EpgViewPeriod MoveTimeTarget(int mode)
+        {
+            var start = ViewPeriod.Start;
+            if (this.EpgStyle().EpgArcStartSunday && start.DayOfWeek != DayOfWeek.Sunday)
+            {
+                start += TimeSpan.FromDays(mode * (mode < 0 ? DefPeriod.InitDays : ViewPeriod.Days));
+                var offset = (int)start.DayOfWeek;
+                if (offset != 0)
+                {
+                    start += TimeSpan.FromDays(-offset + (mode < 0 ? 7 : 0));
+                }
+            }
+            else
+            {
+                start += TimeSpan.FromDays(mode * (mode < 0 ? DefPeriod.InitMoveDays : ViewPeriod.MoveDays));
+            }
+            return start >= DefPeriod.InitStart ? DefPeriod.DefPeriod : new EpgViewPeriod(start, DefPeriod.InitDays);
+        }
+        public void MovePanel_MoveButtonTooltip(Button btn, ToolTipEventArgs e, int mode)
+        {
+            e.Handled = !btn.IsEnabled;
+            btn.ToolTip = MoveTimeTarget(mode).ConvertText(DefPeriod.DefPeriod.End);
+        }
+        public void JumpDate(EpgViewPeriod period = null)
+        {
+            period = period ?? DefPeriod.DefPeriod;
+            if (period.Equals(ViewPeriod)) return;
+            ViewPeriod = period.DeepClone();
+            UpdateInfo(true);
+        }
+        protected virtual void RefreshMoveButtonStatus()
+        {
+            buttonNow.Content = IsDataDefPeriod ? "現在" : "初期\r\n表示";
+            buttonNow.ToolTip = IsDataDefPeriod ? "現在時刻へスクロール" : DefPeriod.DefPeriod.ConvertText(DefPeriod.DefPeriod.End);
+            buttonNow.Tag = IsDataDefPeriod ? null : "jump";
+
+            movePanel.SetButtonEnabled(
+                ViewPeriod.Start > CommonManager.Instance.DB.EventTimeMin,
+                ViewPeriod.End < (IsDataDefPeriod ? ViewPeriod.End : DefPeriod.DefPeriod.End),
+                IsJumpPanelOpened);
+
+            jumpPanel.Visibility = IsJumpPanelOpened ? Visibility.Visible : Visibility.Collapsed;
+            jumpPanel.SetDate(ViewPeriod, CommonManager.Instance.DB.EventTimeMin);
+        }
+        protected virtual void NowTimeClick(bool buttonAction)
+        {
+            if (buttonAction && buttonNow.Tag != null)
+            {
+                JumpDate();
+                return;
+            }
+            MoveNowTime();
+        }
+        protected virtual void MoveNowTime() { }
 
         /// <summary>
         /// 予約情報更新通知
@@ -214,6 +377,7 @@ namespace EpgTimer.EpgView
         }
         protected bool ReloadReserveInfoData()
         {
+            CommonManager.Instance.DB.ReloadRecFileInfo();//起動直後用
             ReloadReserveViewItem();
             return true;
         }
@@ -222,11 +386,21 @@ namespace EpgTimer.EpgView
         /// <summary>EPGデータ更新</summary>
         protected override bool ReloadInfoData()
         {
-            if (viewData.ReloadEpgData() == false) return false;
+            EpgViewPeriod newPeriod = RestoreState.isDefPeriod == true ? DefPeriod.DefPeriod : RestoreState.period ?? ViewPeriod;
+            if (!viewData.ReloadEpgData(newPeriod, !this.IsVisible)) return false;
+            ViewPeriod = DataPeriod.DeepClone();
+            RefreshMoveButtonStatus();
+
             ReloadReserveInfoFlg = true;
             ReloadProgramViewItem();
             if (ReloadReserveInfoFlg == true) ReloadReserveInfoFlg = !ReloadReserveInfoData();
             restoreState = null;
+
+            if (viewData.EpgTabInfo.SearchMode && Settings.Instance.NgAutoEpgLoadNW && Settings.Instance.PrebuildEpg == false
+                && ViewPeriod.End > CommonUtil.EdcbNowEpg && CommonManager.Instance.DB.ReserveList.Values.Any(r => r.IsManual))
+            {
+                CommonManager.MainWindow.MainProc(MainProcItem.EpgDataSearch);
+            }
             return true;
         }
         protected virtual void ReloadProgramViewItem() { }
@@ -236,21 +410,33 @@ namespace EpgTimer.EpgView
             if (this.IsVisible == false) return;
 
             RefreshMenu();
-            ReloadInfo();
-            ReloadReserveInfo();//ReloadInfo()が実行された場合は、こちらは素通りになる。
+            JumpDate(BlackoutWindow.HasItemData ? SearchJumpPeriod(BlackoutWindow.ItemData.PgStartTime) : DataPeriod);
+            ReloadInfo();//JumpDate()が実行された場合は、何もしない
+            ReloadReserveInfo();//JumpDate() or ReloadInfo()が実行された場合は、何もしない
 
-            if (BlackoutWindow.HasData == true)
+            if (BlackoutWindow.HasItemData)
             {
                 //「番組表へジャンプ」の場合、またはオプションで指定のある場合に強調表示する。
-                var isMarking = (BlackoutWindow.NowJumpTable || Settings.Instance.DisplayNotifyEpgChange) ? JumpItemStyle.JumpTo : JumpItemStyle.None;
+                var isMarking = (BlackoutWindow.NowJumpTable || this.EpgStyle().DisplayNotifyEpgChange) ? JumpItemStyle.JumpTo : JumpItemStyle.None;
                 bool mgs = MoveToItem(BlackoutWindow.SelectedItem, isMarking) == false && BlackoutWindow.NowJumpTable == true;
                 StatusManager.StatusNotifySet(mgs == false ? "" : "アイテムが見つかりませんでした < 番組表へジャンプ");
             }
             BlackoutWindow.Clear();
 
+            RefreshMoveButtonStatus();
             RefreshStatus();
         }
+        protected EpgViewPeriod SearchJumpPeriod(DateTime time)
+        {
+            if (DataPeriod.Contains(time) == true) return DataPeriod;
+            if (DefPeriod.DefPeriod.Contains(time) == true) return DefPeriod.DefPeriod;
 
+            //見つからない場合はそのまま
+            if (CommonManager.Instance.DB.IsEventTimePossible(time) == false)
+            { return DataPeriod; }
+
+            return new EpgViewPeriod(time - TimeSpan.FromDays(this.EpgStyle().EpgArcStartSunday ? (int)time.DayOfWeek : 0), DefPeriod.InitDays);
+        }
         public bool IsEnabledJumpTab(SearchItem target)
         {
             return MoveToItem(target, JumpItemStyle.None, true);
@@ -261,16 +447,16 @@ namespace EpgTimer.EpgView
             if (target.ReserveInfo != null)
             {
                 ReloadReserveInfo();
-                return MoveToReserveItem(target.ReserveInfo, style, dryrun) >= 0;
+                if(target.ReserveInfo is ReserveDataEnd)
+                {
+                    return MoveToRecInfoItem(MenuUtil.GetRecFileInfo(target.ReserveInfo), style, dryrun) >= 0;
+                }
+                else
+                {
+                    return MoveToReserveItem(target.ReserveInfo, style, dryrun) >= 0;
+                }
             }
-            else if (target.EventInfo != null)
-            {
-                EpgEventInfo info = target.EventInfo;
-                //録画結果でevent_idを持っていないもの(未放送時間帯を録画など)は結局番組を見つけられないので、過去番組は探さない。
-                info = info.event_id != 0xFFFF ? info : MenuUtil.SearchEventInfoLikeThat(info);
-                return MoveToProgramItem(info, style, dryrun) >= 0;
-            }
-            return false;
+            return MoveToProgramItem(target.EventInfo, style, dryrun) >= 0;
         }
     }
 }

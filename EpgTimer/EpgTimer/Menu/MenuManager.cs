@@ -299,11 +299,13 @@ namespace EpgTimer
             ctmd.Items.Add(new CtxmItemData("削除", EpgCmds.Delete));
             ctmd.Items.Add(new CtxmItemData("アイテムの復元", cm_RestoreMenu));
             ctmd.Items.Add(new CtxmItemData("予約一覧へジャンプ", EpgCmds.JumpReserve));
+            ctmd.Items.Add(new CtxmItemData("録画済み一覧へジャンプ", EpgCmds.JumpRecInfo));
             ctmd.Items.Add(new CtxmItemData("チューナー画面へジャンプ", EpgCmds.JumpTuner));
             ctmd.Items.Add(new CtxmItemData("番組表(標準モード)へジャンプ", EpgCmds.JumpTable));
             ctmd.Items.Add(new CtxmItemData("自動予約登録変更", EpgCmdsEx.ShowAutoAddDialogMenu));
             ctmd.Items.Add(new CtxmItemData("番組名でキーワード予約作成...", EpgCmds.ToAutoadd));
-            ctmd.Items.Add(new CtxmItemData("追っかけ再生", EpgCmds.Play));
+            ctmd.Items.Add(new CtxmItemData("追っかけ再生", EpgCmds.Play, 0));
+            ctmd.Items.Add(new CtxmItemData("録画済み再生", EpgCmds.Play, 1));
             ctmd.Items.Add(new CtxmItemData("録画フォルダを開く", EpgCmdsEx.OpenFolderMenu));
             ctmd.Items.Add(new CtxmItemData("録画ログを検索(_L)", EpgCmds.SearchRecLog));
             ctmd.Items.AddRange(AddAppendMenus.DeepClone());
@@ -321,12 +323,14 @@ namespace EpgTimer
             ctmd.Items.Add(new CtxmItemData("削除", EpgCmds.Delete));
             ctmd.Items.Add(new CtxmItemData("アイテムの復元", cm_RestoreMenu));
             ctmd.Items.Add(new CtxmItemData("予約一覧へジャンプ", EpgCmds.JumpReserve));
+            ctmd.Items.Add(new CtxmItemData("録画済み一覧へジャンプ", EpgCmds.JumpRecInfo));
             ctmd.Items.Add(new CtxmItemData("チューナー画面へジャンプ", EpgCmds.JumpTuner));
             ctmd.Items.Add(new CtxmItemData("番組表へジャンプ", EpgCmds.JumpTable));
             ctmd.Items.Add(new CtxmItemData("自動予約登録変更", EpgCmdsEx.ShowAutoAddDialogMenu));
             ctmd.Items.Add(new CtxmItemData("番組名で再検索", EpgCmds.ReSearch));
             ctmd.Items.Add(new CtxmItemData("番組名で再検索(別ウィンドウ)", EpgCmds.ReSearch2));
-            ctmd.Items.Add(new CtxmItemData("追っかけ再生", EpgCmds.Play));
+            ctmd.Items.Add(new CtxmItemData("追っかけ再生", EpgCmds.Play, 0));
+            ctmd.Items.Add(new CtxmItemData("録画済み再生", EpgCmds.Play, 1));
             ctmd.Items.Add(new CtxmItemData("録画フォルダを開く", EpgCmdsEx.OpenFolderMenu));
             ctmd.Items.Add(new CtxmItemData("録画ログを検索(_L)", EpgCmds.SearchRecLog));
             ctmd.Items.Add(new CtxmItemData("ジャンル登録(_G)", EpgCmds.SetGenre));
@@ -841,14 +845,15 @@ namespace EpgTimer
             return true;
         }
 
-        public void CtxmGenerateOpenFolderItems(MenuItem menu, RecSettingData recSetting = null)
+        public void CtxmGenerateOpenFolderItems(MenuItem menu, RecSettingData recSetting = null, string additionalPath = null)
         {
             CtxmClearItemMenu(menu); //ツールチップのクリアがあるので先
 
             if (menu.IsEnabled == false) return;
 
             bool defOutPutted = false;
-            recSetting = recSetting == null ? new RecSettingData() : recSetting;
+            recSetting = recSetting == null ? new RecSettingData() : recSetting.DeepClone();
+            if (string.IsNullOrEmpty(additionalPath) == false) recSetting.RecFolderList.Add(new RecFileSetInfo { RecFolder = additionalPath });
 
             var addFolderList = new Action<List<RecFileSetInfo>, bool, string>((fldrs, recflg, header_exp) =>
             {

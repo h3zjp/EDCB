@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Threading;
 using System.Runtime.InteropServices;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Windows.Media;
 using System.IO;
@@ -25,15 +26,6 @@ namespace EpgTimer
             public uint cbSize;
             public uint dwTime;
         }
-
-        public static int NumBits(long bits)
-        {
-            bits = (bits & 0x55555555) + (bits >> 1 & 0x55555555);
-            bits = (bits & 0x33333333) + (bits >> 2 & 0x33333333);
-            bits = (bits & 0x0f0f0f0f) + (bits >> 4 & 0x0f0f0f0f);
-            bits = (bits & 0x00ff00ff) + (bits >> 8 & 0x00ff00ff);
-            return (int)((bits & 0x0000ffff) + (bits >> 16 & 0x0000ffff));
-        }
         
         public static int GetIdleTimeSec()
         {
@@ -52,6 +44,21 @@ namespace EpgTimer
                 IdleTicks = unchecked(GetTickCount() - LastInputInfo.dwTime);
             }
             return (int)(IdleTicks / 1000);
+        }
+
+        public static DateTime EdcbNow { get { return DateTime.UtcNow.AddHours(9); } }
+        public static DateTime EdcbNowEpg { get { return EdcbNow.AddSeconds(15); } }//時計合わせのマージンを考慮して進めた時刻
+
+        public static T Max<T>(params T[] args) { return args.Max(); }
+        public static T Min<T>(params T[] args) { return args.Min(); }
+
+        public static int NumBits(long bits)
+        {
+            bits = (bits & 0x55555555) + (bits >> 1 & 0x55555555);
+            bits = (bits & 0x33333333) + (bits >> 2 & 0x33333333);
+            bits = (bits & 0x0f0f0f0f) + (bits >> 4 & 0x0f0f0f0f);
+            bits = (bits & 0x00ff00ff) + (bits >> 8 & 0x00ff00ff);
+            return (int)((bits & 0x0000ffff) + (bits >> 16 & 0x0000ffff));
         }
 
         /// <summary>ショートカットの作成</summary>
@@ -110,6 +117,9 @@ namespace EpgTimer
             return false;
         }
 
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+
         /// <summary>メンバ名を返す。</summary>
         public static string NameOf<T>(Expression<Func<T>> e)
         {
@@ -117,8 +127,8 @@ namespace EpgTimer
             return member.Member.Name;
         }
 
-        /// <summary>リストにして返す。(return new List&lt;T&gt; { item })</summary>
-        public static List<T> ToList<T>(T item)
+        /// <summary>リストに入れて返す。(return new List&lt;T&gt; { item })</summary>
+        public static List<T> IntoList<T>(this T item)
         {
             return new List<T> { item };
         }
@@ -151,6 +161,16 @@ namespace EpgTimer
             }
             return s;
         }
+    }
 
+    /// <summary>indexガード付きリスト</summary>
+    public class IndexSafeList<T> : List<T>
+    {
+        public new T this[int index]
+        {
+            get { return Count != 0 ? base[Check(index) ? index : 0] : default(T); }
+            set { if (Check(index)) base[index] = value; }
+        }
+        protected bool Check(int index) { return 0 <= index && index < Count; }
     }
 }

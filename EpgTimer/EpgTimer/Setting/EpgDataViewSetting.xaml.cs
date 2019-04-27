@@ -16,7 +16,6 @@ namespace EpgTimer
         private CustomEpgTabInfo info { get { return DataContext as CustomEpgTabInfo; } }
         private EpgSearchKeyInfo searchKey = new EpgSearchKeyInfo();
         private RadioBtnSelect viewModeRadioBtns;
-        private Dictionary<ulong, ServiceViewItem> servieceList;
 
         public EpgDataViewSetting()
         {
@@ -28,19 +27,31 @@ namespace EpgTimer
                 comboBox_timeH_week.ItemsSource = Enumerable.Range(0, 24);
                 info.StartTimeWeek = 4;
 
-                servieceList = ChSet5.ChList.Values.Select(item => new ServiceViewItem(item)).ToDictionary(item => item.Key, item => item);
-                var selectedList = ChSet5.ChListSelected.Select(item => servieceList[item.Key]).ToList();
-                listBox_serviceDttv.ItemsSource = selectedList.Where(item => item.ServiceInfo.IsDttv == true);
-                listBox_serviceBS.ItemsSource = selectedList.Where(item => item.ServiceInfo.IsBS == true);
-                listBox_serviceCS.ItemsSource = selectedList.Where(item => item.ServiceInfo.IsCS == true);
-                listBox_serviceSP.ItemsSource = selectedList.Where(item => item.ServiceInfo.IsSPHD == true);
-                listBox_serviceOther.ItemsSource = selectedList.Where(item => item.ServiceInfo.IsOther == true);
-                listBox_serviceAll.ItemsSource = selectedList;
-
-                foreach (TabItem tab in tab_ServiceList.Items)
+                foreach (var item in ChSet5.ChListSelected.Select(item => new ServiceViewItem(item)))
                 {
-                    tab.Visibility = ((ListView)tab.Content).Items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+                    if (item.ServiceInfo.IsDttv) listBox_serviceDttv.Items.Add(item);
+                    if (item.ServiceInfo.IsBS) listBox_serviceBS.Items.Add(item);
+                    if (item.ServiceInfo.IsCS) listBox_serviceCS.Items.Add(item);
+                    if (item.ServiceInfo.IsSPHD) listBox_serviceSP.Items.Add(item);
+                    if (item.ServiceInfo.IsOther) listBox_serviceOther.Items.Add(item);
+                    listBox_serviceAll.Items.Add(item);
                 }
+
+                int i = 0;
+                var spItems = Enum.GetValues(typeof(EpgServiceInfo.SpecialViewServices)).Cast<ulong>().Select(id => new ServiceViewItem(id)).ToList();
+                var spItemsOther = spItems.ToList();
+                foreach (TabItem tab in tab_ServiceList.Items.OfType<TabItem>().Take(4))
+                {
+                    var listbox = (ListView)tab.Content;
+                    if (listbox.Items.Count != 0)
+                    {
+                        listbox.Items.Insert(0, spItems[i]);
+                        spItemsOther.Remove(spItems[i]);
+                    }
+                    tab.Visibility = listbox.Items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+                    i++;
+                }
+                listBox_serviceOther.Items.InsertItems(0, spItemsOther);
 
                 listBox_jyanru.ItemsSource = CommonManager.ContentKindList;
 
@@ -61,7 +72,7 @@ namespace EpgTimer
         /// デフォルト表示の設定値
         /// </summary>
         /// <param name="setInfo"></param>
-        public void SetSetting(CustomEpgTabInfo setInfo)
+        public void SetSetting(CustomEpgTabInfo setInfo, List<EpgSetting> setList = null)
         {
             DataContext = setInfo.DeepClone();
             searchKey = setInfo.SearchKey.DeepClone();
@@ -70,8 +81,14 @@ namespace EpgTimer
             checkBox_isVisible.IsChecked = setInfo.IsVisible;
             viewModeRadioBtns.Value = setInfo.ViewMode;
 
-            listBox_serviceView.Items.AddItems(setInfo.ViewServiceList
-                .Where(id => servieceList.ContainsKey(id) == true).Select(id => servieceList[id]));
+            setList = setList ?? Settings.Instance.EpgSettingList;
+            cmb_design.SelectedValuePath = CommonUtil.NameOf(() => setList[0].ID);
+            cmb_design.DisplayMemberPath = CommonUtil.NameOf(() => setList[0].Name);
+            cmb_design.ItemsSource = setList;
+            cmb_design.SelectedIndex = setList.FindIndex(set => set.ID == setInfo.EpgSettingID);
+            if (cmb_design.SelectedIndex < 0) cmb_design.SelectedIndex = 0;
+
+            listBox_serviceView.Items.AddItems(setInfo.ViewServiceList.Select(id => new ServiceViewItem(id)));
             listBox_jyanruView.Items.AddItems(setInfo.ViewContentList.Select(data => CommonManager.ContentKindInfoForDisplay(data)));
         }
 
@@ -84,6 +101,11 @@ namespace EpgTimer
             info.TabName = textBox_tabName.IsEnabled == true ? textBox_tabName.Text : info.TabName;
             info.IsVisible = checkBox_isVisible.IsEnabled == true ? checkBox_isVisible.IsChecked == true : info.IsVisible;
             info.ViewMode = viewModeRadioBtns.Value;
+            if (cmb_design.SelectedIndex >= 0)
+            {
+                info.EpgSettingIndex = cmb_design.SelectedIndex;
+                info.EpgSettingID = (int)cmb_design.SelectedValue;
+            }
 
             info.SearchKey = searchKey.DeepClone();
             info.SearchKey.serviceList.Clear();//不要なので削除
@@ -100,6 +122,7 @@ namespace EpgTimer
         private void listBox_Button_Set()
         {
             bxs = new BoxExchangeEditor(null, this.listBox_serviceView, true, true, true, true);
+            bxs.ItemComparer = ServiceViewItem.Comparator;
 
             //サービス選択関係はソースの ListView が複数あるので、全ての ListViewItem にイベントを追加する。
             foreach (TabItem tab in tab_ServiceList.Items)
@@ -116,7 +139,7 @@ namespace EpgTimer
                 try { bxs.SourceBox = ((sender as TabControl).SelectedItem as TabItem).Content as ListView; }
                 catch { bxs.SourceBox = null; }
             };
-            button_service_addAll.Click += new RoutedEventHandler(bxs.button_AddAll_Click);
+            button_service_addAll.Click += (sender, e) => button_AddAll();
             button_service_add.Click += new RoutedEventHandler(bxs.button_Add_Click);
             button_service_ins.Click += new RoutedEventHandler(bxs.button_Insert_Click);
             button_service_del.Click += new RoutedEventHandler(bxs.button_Delete_Click);
@@ -133,6 +156,13 @@ namespace EpgTimer
             button_jyanru_ins.Click += new RoutedEventHandler(bxj.button_Insert_Click);
             button_jyanru_del.Click += new RoutedEventHandler(bxj.button_Delete_Click);
             button_jyanru_delAll.Click += new RoutedEventHandler(bxj.button_DeleteAll_Click);
+        }
+
+        //特殊アイテムを全追加から外す
+        private void button_AddAll()
+        {
+            bxs.SourceBox.SelectAll();
+            bxs.bxAddItems(bxs.SourceBox.SelectedItemsList().Where(item => ((ServiceViewItem)item).ServiceInfo.HasSPKey == false), bxs.TargetBox);
         }
 
         List<Tuple<int, int>> sortList;
@@ -221,16 +251,12 @@ namespace EpgTimer
         /// <summary>映像のみ全追加</summary>
         private void button_service_addVideo_Click(object sender, RoutedEventArgs e)
         {
-            try
-            {
-                ListBox listBox = bxs.SourceBox;
-                if (listBox == null) return;
+            ListBox listBox = bxs.SourceBox;
+            if (listBox == null) return;
 
-                listBox.UnselectAll();
-                listBox.SelectedItemsAdd(listBox.Items.OfType<ServiceViewItem>().Where(info => info.ServiceInfo.IsVideo == true));
-                button_service_add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            }
-            catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
+            listBox.UnselectAll();
+            listBox.SelectedItemsAdd(listBox.Items.OfType<ServiceViewItem>().Where(info => info.ServiceInfo.IsVideo == true));
+            button_service_add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         }
 
         private void listBox_serviceView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -278,17 +304,13 @@ namespace EpgTimer
 
         private void Display_ServiceView(ListBox srclistBox, TextBox targetBox)
         {
-            try
-            {
-                if (srclistBox == null || targetBox == null) return;
+            if (srclistBox == null || targetBox == null) return;
 
-                targetBox.Text = "";
-                if (srclistBox.SelectedItem == null) return;
+            targetBox.Text = "";
+            if (srclistBox.SelectedItem == null) return;
 
-                var info = (ServiceViewItem)srclistBox.SelectedItems[srclistBox.SelectedItems.Count - 1];
-                targetBox.Text = info.ConvertInfoText();
-            }
-            catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
+            var info = (ServiceViewItem)srclistBox.SelectedItems[srclistBox.SelectedItems.Count - 1];
+            targetBox.Text = info.ConvertInfoText();
         }
 
         private void button_searchKey_Click(object sender, RoutedEventArgs e)
@@ -304,10 +326,10 @@ namespace EpgTimer
 
                 //サービスリストは表示順を保持する
                 var oldList = listBox_serviceView.Items.OfType<object>().ToList();
-                var newList = searchKey.serviceList.Where(sv => servieceList.ContainsKey((ulong)sv) == true).Select(sv => servieceList[(ulong)sv]).ToList();
+                var newList = searchKey.serviceList.Select(id => new ServiceViewItem((ulong)id)).ToList();
                 listBox_serviceView.UnselectAll();
-                listBox_serviceView.Items.RemoveItems(oldList.Where(sv => newList.Contains(sv) == false));
-                listBox_serviceView.Items.AddItems(newList.Where(sv => oldList.Contains(sv) == false));
+                listBox_serviceView.Items.RemoveItems(oldList.Where(sv => newList.Contains(sv, ServiceViewItem.Comparator) == false));
+                listBox_serviceView.Items.AddItems(newList.Where(sv => oldList.Contains(sv, ServiceViewItem.Comparator) == false));
 
                 //ジャンルリストの同期はオプションによる
                 if (tabInfo.SearchGenreNoSyncView == false)

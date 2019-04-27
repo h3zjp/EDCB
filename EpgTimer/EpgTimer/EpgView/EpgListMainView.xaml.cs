@@ -16,21 +16,21 @@ namespace EpgTimer
     public partial class EpgListMainView : EpgViewBase
     {
         private static int? lastActivateClass = null;
-        protected class EpgViewStateList : EpgViewState
+
+        protected class StateListMain : StateBase
         {
             public HashSet<ulong> selectID = null;
             public ListViewSelectedKeeper selectList = null;
+            public StateListMain() { }
+            public StateListMain(EpgListMainView view) : base(view)
+            {
+                selectID = view.GetSelectID();
+                selectList = new ListViewSelectedKeeper(null, false, item => (item as SearchItem).KeyID);
+                selectList.StoreListViewSelected(view.listView_event);
+            }
         }
-        public override EpgViewState GetViewState()
-        {
-            var ret = new EpgViewStateList();
-            ret.viewMode = viewMode;
-            ret.selectID = GetSelectID();
-            ret.selectList = new ListViewSelectedKeeper(null, false, item => (item as SearchItem).KeyID);
-            ret.selectList.StoreListViewSelected(listView_event);
-            return ret;
-        }
-        protected EpgViewStateList RestoreState { get { return restoreState as EpgViewStateList ?? new EpgViewStateList(); } }
+        public override EpgViewState GetViewState() { return new StateListMain(this); }
+        protected new StateListMain RestoreState { get { return restoreState as StateListMain ?? new StateListMain(); } }
 
         private ListViewController<SearchItem> lstCtrl;
         private List<ServiceViewItem> serviceList = new List<ServiceViewItem>();
@@ -54,6 +54,9 @@ namespace EpgTimer
             //ステータス変更の設定
             lstCtrl.SetSelectionChangedEventHandler((sender, e) => this.UpdateStatus(1));
 
+            //過去番組移動ボタン関係
+            SetControlsPeriod(timeJumpView, timeMoveView, button_now);
+
             base.InitCommand();
 
             //コマンド集の初期化の続き
@@ -73,6 +76,7 @@ namespace EpgTimer
 
             //その他の設定
             SelectableItem.Set_CheckBox_PreviewChanged(listBox_service, listBox_service_Click_SelectChange);
+            this.IsVisibleChanged += (sender, e) => { if (IsVisible) lastActivateClass = this.GetHashCode(); };
         }
         protected override void RefreshMenuInfo()
         {
@@ -105,15 +109,14 @@ namespace EpgTimer
 
                 listBox_service.ItemsSource = null;
 
-                serviceList = serviceEventListOrderAdjust.Select(item => item.serviceInfo.Create64Key())
-                                            .Where(key => ChSet5.ChList.ContainsKey(key))
-                                            .Select(key => new ServiceViewItem(ChSet5.ChList[key])).ToList();
+                serviceList = serviceListOrderAdjust.Select(info => new ServiceViewItem(info)).ToList();
                 serviceList.ForEach(item => item.IsSelected = lastSID.Contains(item.Key) == false);
 
                 listBox_service.ItemsSource = serviceList;
 
                 UpdateEventList(true);
                 ReloadReserveInfoFlg = false;//リストビューでは処理済みになる
+                MoveNowTime();
             }
             catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
         }
@@ -121,11 +124,12 @@ namespace EpgTimer
         {
             lstCtrl.ReloadInfoData(dataList =>
             {
-                var eventDic = serviceEventList.ToDictionary(item => item.serviceInfo.Create64Key(), item => item.eventList);
-                foreach (var item in serviceList.Where(item => item.IsSelected == true && eventDic.ContainsKey(item.Key) == true))
+                var selected = new HashSet<UInt64>(serviceList.Where(item => item.IsSelected).Select(item => item.Key));
+                foreach (var item in serviceEventList.Where(item => selected.Contains(item.serviceInfo.Key)))
                 {
-                    dataList.AddRange(eventDic[item.Key].Where(e => e.IsGroupMainEvent == true).ToSearchList(viewInfo.FilterEnded));
+                    dataList.AddRange(item.eventList.Where(e => e.IsGroupMainEvent == true).ToSearchList(viewInfo.FilterEnded));
                 }
+                dataList.ForEach(d => d.EpgSettingIndex = viewInfo.EpgSettingIndex);
                 return true;
             });
 
@@ -183,13 +187,10 @@ namespace EpgTimer
             richTextBox_eventInfo.Document = CommonManager.ConvertDisplayText(listView_event.SelectedItem as SearchItem);
         }
 
-        protected override void UserControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+        protected override void MoveNowTime()
         {
-            base.UserControl_IsVisibleChanged(sender, e);
-            if (IsVisible == true)
-            {
-                lastActivateClass = this.GetHashCode();
-            }
+            listView_event.SelectedIndex = lstCtrl.dataList.FindIndex(item => item.EventInfo.PgStartTime >= CommonUtil.EdcbNowEpg);
+            listView_event.ScrollIntoView(listView_event.SelectedItem);
         }
 
         public override void SaveViewData()

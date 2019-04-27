@@ -20,12 +20,10 @@ namespace EpgTimer.Setting
     {
         private Settings settings { get { return (Settings)DataContext; } }
 
-        private RadioBtnSelect epgPopupRadioBtns;
-        private RadioBtnSelect tunerPopupRadioBtns;
-        private RadioBtnSelect tunerToolTipRadioBtns;
-
-        public bool IsChangeEpgArcLoadSetting { get; private set; }
         public bool IsChangeRecInfoDropExcept { get; private set; }
+
+        //デザイン管理用
+        private HashSet<int> idxHash = new HashSet<int>();
 
         public SetEpgView()
         {
@@ -34,8 +32,10 @@ namespace EpgTimer.Setting
             if (CommonManager.Instance.NWMode == true)
             {
                 stackPanel_epgArchivePeriod.IsEnabled = false;
+                stackPanel_DropLogThresh.IsEnabled = false;
             }
 
+            textBox_des_name.KeyDown += ViewUtil.KeyDown_Enter(btn_des_name);
             listBox_tab.KeyDown += ViewUtil.KeyDown_Enter(button_tab_chg);
             SelectableItem.Set_CheckBox_PreviewChanged(listBox_tab);
             var bx = new BoxExchangeEditor(null, this.listBox_tab, true, true, true);
@@ -50,6 +50,10 @@ namespace EpgTimer.Setting
 
             var FLanguage = XmlLanguage.GetLanguage("ja-JP");
             comboBox_fontTitle.ItemsSource = Fonts.SystemFontFamilies.Select(f => f.FamilyNames.ContainsKey(FLanguage) == true ? f.FamilyNames[FLanguage] : f.Source).OrderBy(s => s).ToList();
+
+            RadioButtonTagConverter.SetBindingButtons(CommonUtil.NameOf(() => settings.EpgSettingList[0].EpgPopupMode), panel_epgPopup);
+            cmb_design.SelectedValuePath = CommonUtil.NameOf(() => settings.EpgSettingList[0].ID);
+            cmb_design.DisplayMemberPath = CommonUtil.NameOf(() => settings.EpgSettingList[0].Name);
 
             //カラー関係はまとめてバインドする
             var colorReference = typeof(Brushes).GetProperties().Select(p => new ColorComboItem(p.Name, (Brush)p.GetValue(null, null))).ToList();
@@ -66,12 +70,12 @@ namespace EpgTimer.Setting
                     setComboColor1(path + "[" + (string)cmb.Tag + "]", cmb);
                 }
             });
-            setComboColor1(CommonUtil.NameOf(() => settings.TitleColor1), comboBox_colorTitle1);
-            setComboColor1(CommonUtil.NameOf(() => settings.TitleColor2), comboBox_colorTitle2);
-            setComboColors(CommonUtil.NameOf(() => settings.ContentColorList), grid_EpgColors);
-            setComboColors(CommonUtil.NameOf(() => settings.EpgResColorList), grid_EpgColorsReserve);
-            setComboColors(CommonUtil.NameOf(() => settings.EpgEtcColors), grid_EpgTimeColors);
-            setComboColors(CommonUtil.NameOf(() => settings.EpgEtcColors), grid_EpgEtcColors);
+            setComboColor1(CommonUtil.NameOf(() => EpgStyle.TitleColor1), comboBox_colorTitle1);
+            setComboColor1(CommonUtil.NameOf(() => EpgStyle.TitleColor2), comboBox_colorTitle2);
+            setComboColors(CommonUtil.NameOf(() => EpgStyle.ContentColorList), grid_EpgColors);
+            setComboColors(CommonUtil.NameOf(() => EpgStyle.EpgResColorList), grid_EpgColorsReserve);
+            setComboColors(CommonUtil.NameOf(() => EpgStyle.EpgEtcColors), grid_EpgTimeColors);
+            setComboColors(CommonUtil.NameOf(() => EpgStyle.EpgEtcColors), grid_EpgEtcColors);
             setComboColors(CommonUtil.NameOf(() => settings.TunerServiceColors), grid_TunerFontColor);
             setComboColors(CommonUtil.NameOf(() => settings.TunerServiceColors), grid_TunerColors);
             setComboColors(CommonUtil.NameOf(() => settings.TunerServiceColors), grid_TunerEtcColors);
@@ -83,12 +87,12 @@ namespace EpgTimer.Setting
                     SetBindingColorButton(btn, path + "[" + (string)btn.Tag + "]");
                 }
             });
-            SetBindingColorButton(button_colorTitle1, CommonUtil.NameOf(() => settings.TitleCustColor1));
-            SetBindingColorButton(button_colorTitle2, CommonUtil.NameOf(() => settings.TitleCustColor2));
-            setButtonColors(CommonUtil.NameOf(() => settings.ContentCustColorList), grid_EpgColors);
-            setButtonColors(CommonUtil.NameOf(() => settings.EpgResCustColorList), grid_EpgColorsReserve);
-            setButtonColors(CommonUtil.NameOf(() => settings.EpgEtcCustColors), grid_EpgTimeColors);
-            setButtonColors(CommonUtil.NameOf(() => settings.EpgEtcCustColors), grid_EpgEtcColors);
+            SetBindingColorButton(button_colorTitle1, CommonUtil.NameOf(() => EpgStyle.TitleCustColor1));
+            SetBindingColorButton(button_colorTitle2, CommonUtil.NameOf(() => EpgStyle.TitleCustColor2));
+            setButtonColors(CommonUtil.NameOf(() => EpgStyle.ContentCustColorList), grid_EpgColors);
+            setButtonColors(CommonUtil.NameOf(() => EpgStyle.EpgResCustColorList), grid_EpgColorsReserve);
+            setButtonColors(CommonUtil.NameOf(() => EpgStyle.EpgEtcCustColors), grid_EpgTimeColors);
+            setButtonColors(CommonUtil.NameOf(() => EpgStyle.EpgEtcCustColors), grid_EpgEtcColors);
             setButtonColors(CommonUtil.NameOf(() => settings.TunerServiceCustColors), grid_TunerFontColor);
             setButtonColors(CommonUtil.NameOf(() => settings.TunerServiceCustColors), grid_TunerColors);
             setButtonColors(CommonUtil.NameOf(() => settings.TunerServiceCustColors), grid_TunerEtcColors);
@@ -119,55 +123,47 @@ namespace EpgTimer.Setting
                         { Dock.Bottom, "下" },{ Dock.Top, "上" },{ Dock.Left, "左" },{ Dock.Right, "右" }};
         }
 
+        private List<TabItem> EpgSettingTabs { get { return new List<TabItem> { tabEpgBasic, tabEpgBasic2, tabEpgColor, tabEpgColor2 }; } }
         public void LoadSetting()
         {
-            checkBox_FontBoldReplacePattern_Click(null, null);
-            checkBox_ReplacePatternEditFontShare_Click(null, null);
-            checkbox_EpgChangeBorderWatch_Click(null, null);
-            checkbox_TunerChangeBorderWatch_Click(null, null);
-
             //番組表
-            epgPopupRadioBtns = new RadioBtnSelect(panel_epgPopup, settings.EpgPopupMode);
+            panel_fontReplaceEditFont.DataContext = settings;
+
+            settings.EpgSettingList.ForEach(s => idxHash.Add(s.ID));
+            SetDesignCombo(Math.Max(0, cmb_design.SelectedIndex));
 
             int epgArcHour = IniFileHandler.GetPrivateProfileInt("SET", "EpgArchivePeriodHour", 0, SettingPath.TimerSrvIniPath);
-            double epgArcDay = IniFileHandler.GetPrivateProfileDouble("SET", "EpgArchivePeriodDay", 0, SettingPath.TimerSrvIniPath);
-            epgArcDay = (int)(epgArcDay * 24) == epgArcHour ? epgArcDay : epgArcHour / 24d;
-            textBox_epgArchivePeriod.Text = Math.Min(Math.Max(epgArcDay, 0), 20000).ToString();
+            textBox_epgArchivePeriod.Text = Math.Min(Math.Max(epgArcHour / 24, 0), 20000).ToString();
 
             listBox_tab.Items.Clear();
-            listBox_tab.Items.AddItems(settings.CustomEpgTabList.Select(info => new CustomEpgTabInfoView(info)));
+            listBox_tab.Items.AddItems(settings.CustomEpgTabList.Select(info => new CustomEpgTabInfoView(info, () => settings)));
             listBox_tab.SelectedIndex = 0;
 
-            //チューナー画面
-            tunerPopupRadioBtns = new RadioBtnSelect(panel_tunerPopup, settings.TunerPopupMode);
-            tunerToolTipRadioBtns = new RadioBtnSelect(panel_tunerTooltip, settings.TunerToolTipMode);
-
             //録画済み一覧画面
+            textBox_DropSaveThresh.Text = IniFileHandler.GetPrivateProfileInt("SET", "DropSaveThresh", 0, SettingPath.EdcbIniPath).ToString();
+            textBox_ScrambleSaveThresh.Text = IniFileHandler.GetPrivateProfileInt("SET", "ScrambleSaveThresh", -1, SettingPath.EdcbIniPath).ToString();
             textBox_RecInfoDropExcept.Text = string.Join(", ", settings.RecInfoDropExcept);
 
             //予約一覧・共通画面
             textBox_LaterTimeHour.Text = (settings.LaterTimeHour + 24).ToString();
             checkBox_picUpCustom.DataContext = settings.PicUpTitleWork;
+
+            checkBox_FontBoldReplacePattern_Click(null, null);
+            checkBox_ReplacePatternEditFontShare_Click(null, null);
         }
 
         public void SaveSetting()
         {
             //番組表
-            settings.EpgPopupMode = epgPopupRadioBtns.Value;
-
-            double epgArcDay = MenuUtil.MyToNumerical(textBox_epgArchivePeriod, Convert.ToDouble, 20000, 0, 0);
-            IniFileHandler.WritePrivateProfileString("SET", "EpgArchivePeriodHour", (int)(epgArcDay * 24), SettingPath.TimerSrvIniPath);
-            IniFileHandler.WritePrivateProfileString("SET", "EpgArchivePeriodDay", epgArcDay, SettingPath.TimerSrvIniPath);
-            IsChangeEpgArcLoadSetting = Settings.Instance.EpgLoadArcInfo != settings.EpgLoadArcInfo;
+            int epgArcDay = (int)MenuUtil.MyToNumerical(textBox_epgArchivePeriod, Convert.ToDouble, 20000, 0, 0);
+            IniFileHandler.WritePrivateProfileString("SET", "EpgArchivePeriodHour", epgArcDay * 24, SettingPath.TimerSrvIniPath);
 
             settings.CustomEpgTabList = listBox_tab.Items.OfType<CustomEpgTabInfoView>().Select(item => item.Info).ToList();
             settings.SetCustomEpgTabInfoID();
 
-            //チューナー画面
-            settings.TunerToolTipMode = tunerToolTipRadioBtns.Value;
-            settings.TunerPopupMode = tunerPopupRadioBtns.Value;
-
             //録画済み一覧画面
+            IniFileHandler.WritePrivateProfileString("SET", "DropSaveThresh", textBox_DropSaveThresh.Text, SettingPath.EdcbIniPath);
+            IniFileHandler.WritePrivateProfileString("SET", "ScrambleSaveThresh", textBox_ScrambleSaveThresh.Text, SettingPath.EdcbIniPath);
             settings.RecInfoDropExcept = textBox_RecInfoDropExcept.Text.Split(',')
                 .Where(s => string.IsNullOrWhiteSpace(s) == false).Select(s => s.Trim()).ToList();
             IsChangeRecInfoDropExcept = settings.RecInfoDropExcept.SequenceEqual(Settings.Instance.RecInfoDropExcept) == false;
@@ -177,13 +173,79 @@ namespace EpgTimer.Setting
             if (settings.UseLastSearchKey == false) settings.DefSearchKey = new EpgSearchKeyInfo();
         }
 
+        EpgSetting EpgStyle { get { return (EpgSetting)tabEpgBasic.DataContext; } }
+        private void cmb_des_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (cmb_design.SelectedIndex < 0) return;
+            EpgSettingTabs.ForEach(tab => tab.DataContext = null);
+            EpgSettingTabs.ForEach(tab => tab.DataContext = settings.EpgSettingList[cmb_design.SelectedIndex]);
+        }
+        private void SetDesignCombo(int new_idx)
+        {
+            cmb_design.ItemsSource = null;
+            cmb_design.ItemsSource = settings.EpgSettingList;
+            cmb_design.SelectedIndex = -1;
+            cmb_design.SelectedIndex = new_idx;
+            listBox_tab.FitColumnWidth();
+        }
+        private void btn_des_add_Click(object sender, RoutedEventArgs e)
+        {
+            var set = (cmb_design.SelectedItem as EpgSetting);
+            AddEpgSettingItem(set != null ? set.DeepClone() : EpgSetting.DefSetting, textBox_des_name.Text);
+            textBox_des_name.Clear();
+            SetDesignCombo(settings.EpgSettingList.Count - 1);
+        }
+        private void btn_des_name_Click(object sender, RoutedEventArgs e)
+        {
+            if (cmb_design.SelectedIndex < 0) return;
+
+            ((EpgSetting)cmb_design.SelectedItem).Name = textBox_des_name.Text;
+            textBox_des_name.Clear();
+            SetDesignCombo(cmb_design.SelectedIndex);
+        }
+        private void btn_des_reset_Click(object sender, RoutedEventArgs e)
+        {
+            if (cmb_design.SelectedIndex < 0) return;
+
+            ((EpgSetting)cmb_design.SelectedItem).Reset();
+            SetDesignCombo(cmb_design.SelectedIndex);
+        }
+        private void btn_des_delete_Click(object sender, RoutedEventArgs e)
+        {
+            if (cmb_design.SelectedIndex < 0) return;
+
+            settings.EpgSettingList.RemoveAt(cmb_design.SelectedIndex);
+            if (settings.EpgSettingList.Count == 0)
+            {
+                AddEpgSettingItem(EpgSetting.DefSetting);
+            }
+            settings.CustomEpgTabList.ForEach(tab =>
+            {
+                tab.EpgSettingIndex = settings.EpgSettingList.FindIndex(set => tab.EpgSettingID == set.ID);
+                if (tab.EpgSettingIndex < 0)
+                {
+                    tab.EpgSettingIndex = 0;
+                    tab.EpgSettingID = settings.EpgSettingList[0].ID;
+                }
+            });
+            SetDesignCombo(Math.Min(cmb_design.SelectedIndex, settings.EpgSettingList.Count - 1));
+        }
+        private void AddEpgSettingItem(EpgSetting set, string name = "")
+        {
+            set.Name = name;
+            set.ID = Enumerable.Range(0, idxHash.Count + 1).FirstOrDefault(idx => idxHash.Contains(idx) == false);
+            idxHash.Add(set.ID);
+
+            settings.EpgSettingList.Add(set);
+        }
+
         private void button_tab_add_Click(object sender, RoutedEventArgs e)
         {
-            var dlg = new EpgDataViewSettingWindow();
+            var dlg = new EpgDataViewSettingWindow(null, settings.EpgSettingList);
             dlg.Owner = CommonUtil.GetTopWindow(this);
             if (dlg.ShowDialog() == true)
             {
-                listBox_tab.ScrollIntoViewLast(new CustomEpgTabInfoView(dlg.GetSetting()));
+                listBox_tab.ScrollIntoViewLast(new CustomEpgTabInfoView(dlg.GetSetting(), () => settings));
                 listBox_tab.FitColumnWidth();
             }
         }
@@ -198,7 +260,7 @@ namespace EpgTimer.Setting
             {
                 listBox_tab.UnselectAll();
                 listBox_tab.SelectedItem = item;
-                var dlg = new EpgDataViewSettingWindow(item.Info);
+                var dlg = new EpgDataViewSettingWindow(item.Info, settings.EpgSettingList);
                 dlg.Owner = CommonUtil.GetTopWindow(this);
                 if (dlg.ShowDialog() == true)
                 {
@@ -227,7 +289,7 @@ namespace EpgTimer.Setting
         {
             if (infos.Count != 0)
             {
-                listBox_tab.ScrollIntoViewLast(infos.Select(info => new CustomEpgTabInfoView(info)));
+                listBox_tab.ScrollIntoViewLast(infos.Select(info => new CustomEpgTabInfoView(info, () => settings)));
             }
         }
 
@@ -304,17 +366,6 @@ namespace EpgTimer.Setting
             var fw = settings.FontBoldReplacePattern == true ? FontWeights.Bold : FontWeights.Normal;
             textBox_ReplacePatternTitle.FontWeight = fw;
             textBox_ReplacePattern.FontWeight = fw;
-        }
-
-        private void checkbox_EpgChangeBorderWatch_Click(object sender, RoutedEventArgs e)
-        {
-            label_EpgReserve.Content = settings.EpgChangeBorderWatch == true ? "通常(録画)" : "通常(EPG)";
-            label_EpgReserve2.Content = settings.EpgChangeBorderWatch == true ? "通常(視聴)" : "通常(プログラム)";
-        }
-        private void checkbox_TunerChangeBorderWatch_Click(object sender, RoutedEventArgs e)
-        {
-            label_TunerReserve.Content = settings.TunerChangeBorderWatch == true ? "予約枠(録画)" : "予約枠(EPG)";
-            label_TunerReserve2.Content = settings.TunerChangeBorderWatch == true ? "予約枠(視聴)" : "予約枠(プログラム)";
         }
 
         private void button_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
@@ -409,23 +460,25 @@ namespace EpgTimer.Setting
 
     public class CustomEpgTabInfoView : SelectableItem
     {
-        public CustomEpgTabInfoView(CustomEpgTabInfo info1) { Info = info1; }
-        private CustomEpgTabInfo info;
-        public CustomEpgTabInfo Info 
+        public CustomEpgTabInfoView(CustomEpgTabInfo info, Func<Settings> settings) { Info = info; Settings = settings; }
+        private Func<Settings> Settings;
+        private CustomEpgTabInfo _info;
+        public CustomEpgTabInfo Info
         {
             get
             {
-                info.IsVisible = this.IsSelected;
-                return info;
+                _info.IsVisible = this.IsSelected;
+                return _info;
             }
             set
             {
-                info = value;
-                IsSelected = info.IsVisible;
-            } 
+                _info = value;
+                IsSelected = _info.IsVisible;
+            }
         }
         public string TabName { get { return Info.TabName; } }
         public string ViewMode { get { return CommonManager.ConvertViewModeText(Info.ViewMode).Replace("モード", ""); } }
+        public string Design { get { return Settings().EpgSettingList[_info.EpgSettingIndex].Name; } }
         public string SearchMode { get { return Info.SearchMode == false ? "" : Info.SearchKey.andKey == "" ? "(空白)" : Info.SearchKey.andKey; } }
         public string ContentMode { get { return CommonManager.ConvertJyanruText(Info); } }
     }

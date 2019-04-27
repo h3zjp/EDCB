@@ -22,9 +22,9 @@ namespace EpgTimer
         UInt64 Create64PgKey();
         UInt64 CurrentPgUID();
         bool IsSamePg(IAutoAddTargetData data);
-        bool IsOnAir(DateTime? time);
-        bool IsOver(DateTime? time);
-        int OnTime(DateTime? time);
+        bool IsOnAir(DateTime? time = null);
+        bool IsOver(DateTime? time = null);
+        int OnTime(DateTime? time = null);
         List<EpgAutoAddData> SearchEpgAutoAddList(bool? IsEnabled = null, bool ByFazy = false);
         List<ManualAutoAddData> SearchManualAutoAddList(bool? IsEnabled = null);
         List<EpgAutoAddData> GetEpgAutoAddList(bool? IsEnabled = null);
@@ -41,9 +41,7 @@ namespace EpgTimer
         public abstract UInt64 Create64PgKey();
         public virtual UInt64 CurrentPgUID()
         {
-            UInt64 key = Create64PgKey();
-            return (UInt64)(PgStartTime.Ticks) & 0xFFFFFF0000000000 //分解能約1日
-                | ((UInt32)CommonManager.Create16Key(key >> 16)) << 16 | (UInt16)key;
+            return CommonManager.CurrentPgUID(Create64PgKey(), PgStartTime);
         }
         //CurrentPgUID()は同一のEventIDの番組をチェックするが、こちらは放映時刻をチェックする。
         //プログラム予約が絡んでいる場合、結果が変わってくる。
@@ -61,7 +59,7 @@ namespace EpgTimer
         }
         protected static int onTime(DateTime startTime, uint duration, DateTime? time = null)
         {
-            time = time ?? DateTime.UtcNow.AddHours(9);
+            time = time ?? CommonUtil.EdcbNowEpg;
             return startTime.AddSeconds(duration) <= time ? 1 : startTime <= time ? 0 : -1;
         }
 
@@ -128,15 +126,15 @@ namespace EpgTimer
                 && src.WritePlugIn.Equals(dest.WritePlugIn, StringComparison.OrdinalIgnoreCase) == true;
         }
 
-        public static ReserveData ConvertEpgToReserveData(EpgEventInfo epgInfo)
+        public static ReserveData ToReserveData(this EpgEventInfo epgInfo)
         {
             if (epgInfo == null) return null;
             var resInfo = new ReserveData();
-            epgInfo.ConvertToReserveData(ref resInfo);
+            epgInfo.ToReserveData(ref resInfo);
             return resInfo;
         }
 
-        public static bool ConvertToReserveData(this EpgEventInfo epgInfo, ref ReserveData resInfo)
+        public static bool ToReserveData(this EpgEventInfo epgInfo, ref ReserveData resInfo)
         {
             if (epgInfo == null || resInfo == null) return false;
 
@@ -144,18 +142,46 @@ namespace EpgTimer
             resInfo.StartTime = epgInfo.start_time;
             resInfo.StartTimeEpg = epgInfo.start_time;
             resInfo.DurationSecond = epgInfo.PgDurationSecond;
-
-            UInt64 key = epgInfo.Create64Key();
-            if (ChSet5.ChList.ContainsKey(key) == true)
-            {
-                resInfo.StationName = ChSet5.ChList[key].ServiceName;
-            }
+            resInfo.StationName = epgInfo.ServiceName;
             resInfo.OriginalNetworkID = epgInfo.original_network_id;
             resInfo.TransportStreamID = epgInfo.transport_stream_id;
             resInfo.ServiceID = epgInfo.service_id;
             resInfo.EventID = epgInfo.event_id;
 
             return true;
+        }
+        /*
+        public static EpgEventInfo ToEpgEventInfo(this RecFileInfo recinfo)
+        {
+            return recinfo == null ? null : new EpgEventInfo
+            {
+                original_network_id = recinfo.OriginalNetworkID,
+                transport_stream_id = recinfo.TransportStreamID,
+                service_id = recinfo.ServiceID,
+                event_id = recinfo.EventID,
+                start_time = recinfo.StartTime,
+                durationSec = recinfo.DurationSecond,
+                StartTimeFlag = 1,
+            };
+        }
+        */
+        public static ReserveDataEnd ToReserveData(this RecFileInfo recinfo)
+        {
+            return recinfo == null ? null : new ReserveDataEnd
+            {
+                //ReserveID = recinfo.ID,副作用が多いので0固定
+                StartTime = recinfo.StartTime,
+                DurationSecond = recinfo.DurationSecond,
+                OriginalNetworkID = recinfo.OriginalNetworkID,
+                TransportStreamID = recinfo.TransportStreamID,
+                ServiceID = recinfo.ServiceID,
+                EventID = recinfo.EventID,
+                //Title = recinfo.Title,
+                //StationName = recinfo.ServiceName,
+                //Comment = recinfo.Comment,
+                //RecFileNameList = CommonUtil.ToList(recinfo.RecFilePath),
+                //RecSetting.RecFolderList =,
+            };
         }
 
         public static void RegulateData(this EpgSearchDateInfo info)
@@ -178,11 +204,6 @@ namespace EpgTimer
             int shift_day = (direction >= 0 ? 1 : -1);
             hour = (ushort)((int)hour + -1 * shift_day * 24);
             weekFlg = (byte)((weekFlg + 7 + shift_day) % 7);
-        }
-
-        public static UInt64 Create64Key(this EpgServiceInfo obj)
-        {
-            return CommonManager.Create64Key(obj.ONID, obj.TSID, obj.SID);
         }
 
         public static UInt64 Create64Key(this EpgEventData obj)

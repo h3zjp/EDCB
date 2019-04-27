@@ -101,10 +101,11 @@ namespace EpgTimer
         {
             if (DataListBox == null || DataListBox.Items.Count == 0) return -1;
 
+            var items = DataListBox.Items.OfType<SearchItem>();
             if (target != null && target.IsEpgReserve == true)
             {
-                //重複予約が無ければ、target.CurrentPgUID()でMoveToItem()に投げられる。
-                var item = DataListBox.Items.OfType<SearchItem>().FirstOrDefault(d => d.IsReserved == true && d.ReserveInfo.ReserveID == target.ReserveID);
+                //重複予約には注意する。
+                var item = items.FirstOrDefault(d => d.IsReserved == true && d.ReserveInfo.ReserveID == target.ReserveID);
                 int idx = ViewUtil.ScrollToFindItem(item, DataListBox, style, dryrun);
                 if (dryrun == false) ItemIdx = idx;
                 return idx;
@@ -112,14 +113,15 @@ namespace EpgTimer
             else
             {
                 //プログラム予約だと見つからないので、それらしい番組へジャンプする。
-                return MoveToProgramItem(target == null ? null : target.SearchEventInfoLikeThat(), style, dryrun);
+                return MoveToProgramItem(target == null ? null : MenuUtil.GetPgInfoLikeThat(target, null, items.GetEventList()), style, dryrun);
             }
+        }
+        public virtual int MoveToRecInfoItem(RecFileInfo target, JumpItemStyle style = JumpItemStyle.MoveTo, bool dryrun = false)
+        {
+            return MoveToItem(target == null ? 0 : target.CurrentPgUID(), style, dryrun);
         }
         public virtual int MoveToProgramItem(EpgEventInfo target, JumpItemStyle style = JumpItemStyle.MoveTo, bool dryrun = false)
         {
-            if (DataListBox == null || DataListBox.Items.Count == 0) return -1;
-
-            //過去番組表でイベントIDが重複している場合があるので開始時間も考慮する
             return MoveToItem(target == null ? 0 : target.CurrentPgUID(), style, dryrun);
         }
 
@@ -139,6 +141,23 @@ namespace EpgTimer
 
             if (move == true) ItemIdx = ViewUtil.ScrollToFindItem(item, DataListBox, style);
             return item == null ? null : item.ReserveInfo;
+        }
+        public virtual object MoveNextRecinfo(int direction, UInt64 id = 0, bool move = true, JumpItemStyle style = JumpItemStyle.MoveTo)
+        {
+            if (DataListBox == null || DataListBox.Items.Count == 0) return null;
+
+            var list = DataListBox.Items.OfType<SearchItem>().ToList();
+            var idx = id == 0 ? -1 : list.FindIndex(d => d.EventInfo.CurrentPgUID() == id);
+            idx = idx != -1 ? idx : DataListBox.SelectedIndex != -1 ? DataListBox.SelectedIndex : itemIdx;
+            idx++;
+
+            List<SearchItem> sList = list.Skip(idx).Concat(list.Take(idx)).ToList();
+            if (direction < 0) sList.Reverse(0, sList.Count - (idx == 0 ? 0 : 1));
+            object hit = null;
+            SearchItem item = sList.FirstOrDefault(info => (hit = MenuUtil.GetRecFileInfo(info.EventInfo)) != null);
+
+            if (move == true) ItemIdx = ViewUtil.ScrollToFindItem(item, DataListBox, style);
+            return hit;
         }
     }
 }

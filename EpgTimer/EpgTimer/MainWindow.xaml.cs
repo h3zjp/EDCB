@@ -45,8 +45,6 @@ namespace EpgTimer
             IniFileHandler.ReadOnly = CommonManager.Instance.NWMode;
 
             CommonManager.Instance.MM.ReloadWorkData();
-            CommonManager.Instance.ReloadCustContentColorList();
-            CommonManager.ReloadReplaceDictionary();
             Settings.Instance.LoadIniOptions();
 
             if (CheckCmdLine() && Settings.Instance.ExitAfterProcessingArgs)
@@ -119,6 +117,7 @@ namespace EpgTimer
                             Environment.Exit(0);
                         }
                         //EpgTimerSrvを自分で起動させた場合、後でUpdateNotifyItem.EpgDataが来るので、初期フラグをリセットする。
+                        CommonManager.Instance.WaitingSrvReady = true;
                         CommonManager.Instance.DB.ResetUpdateNotify(UpdateNotifyItem.EpgData);
                     }
                 }
@@ -186,14 +185,8 @@ namespace EpgTimer
                 SetInfoSearchButtonTooltip(buttonList["予約情報検索"]);
 
                 //EpgDataは遅延実行される場合があるので、データ取得後の処理を登録
-                CommonManager.Instance.DB.DBChanged[UpdateNotifyItem.EpgData] = () =>
-                {
-                    reserveView.UpdateInfo();
-                    SearchWindow.UpdatesInfo(false);
-                    InfoSearchWindow.UpdatesInfo();
-                    AddReserveEpgWindow.UpdatesInfo();
-                    ChgReserveWindow.UpdatesInfo();
-                };
+                CommonManager.Instance.DB.DBChanged[UpdateNotifyItem.EpgData] = () => MainProc(MainProcItem.EpgDataLoaded);
+                CommonManager.Instance.DB.DBChanged[UpdateNotifyItem.EpgDataAdd] = () => MainProc(MainProcItem.EpgDataAddLoaded);
 
                 if (CommonManager.Instance.NWMode == false)
                 {
@@ -212,6 +205,7 @@ namespace EpgTimer
                     CommonManager.Instance.DB.ReloadReserveInfo(true);
                     CommonManager.Instance.DB.ReloadEpgAutoAddInfo(true);
                     CommonManager.Instance.DB.ReloadManualAutoAddInfo(true);
+                    CommonManager.Instance.DB.ReloadEpgDatabaseInfo(true);
                     if (Settings.Instance.NgAutoEpgLoadNW == false)
                     {
                         CommonManager.Instance.DB.ReloadEpgData(false, true);
@@ -262,7 +256,7 @@ namespace EpgTimer
                     SettingWindow.SettingMode.Default;
 
                     var menuSet = new MenuItem { Header = (tab.Header as string ?? tab.Tag as string) + "の画面設定(_O)..." };
-                    menuSet.Click += (s2, e2) => ViewUtil.MainWindow.OpenSettingDialog(mode);
+                    menuSet.Click += (s2, e2) => OpenSettingDialog(mode);
                     var ctxm = new ContextMenu { IsOpen = true };
                     ctxm.Items.Add(menuSet);
 
@@ -441,7 +435,7 @@ namespace EpgTimer
             TrayManager.Tray.ContextMenuList = Settings.Instance.TaskMenuList.Select(info =>
             {
                 if (buttonList.ContainsKey(info) == false) return new KeyValuePair<string, EventHandler>(null, null);
-                string id = info;
+                string id = info;//CS4対応のキャプチャ
                 return new KeyValuePair<string, EventHandler>(buttonList[id].Content as string, (sender, e) => CommonButtons_Click(id));
             }).ToList();
             TrayManager.Tray.ForceHideBalloonTipSec = Settings.Instance.ForceHideBalloonTipSec;
@@ -653,6 +647,7 @@ namespace EpgTimer
             CommonManager.Instance.DB.SetUpdateNotify(UpdateNotifyItem.RecInfo);
             CommonManager.Instance.DB.SetUpdateNotify(UpdateNotifyItem.PlugInFile);
             CommonManager.Instance.DB.SetUpdateNotify(UpdateNotifyItem.EpgData);
+            CommonManager.Instance.DB.ReloadEpgDatabaseInfo(true);
             CommonManager.Instance.DB.ReloadReserveInfo(true);
             CommonManager.Instance.DB.ReloadEpgAutoAddInfo(true);
             CommonManager.Instance.DB.ReloadManualAutoAddInfo(true);
@@ -684,6 +679,9 @@ namespace EpgTimer
                 ChkTimerWork();
             }
         }
+
+        //視聴予約開始チェック用
+        private List<uint> watchReserveOnRec = new List<uint>();
 
         public void ChkTimerWork()
         {
@@ -737,9 +735,22 @@ namespace EpgTimer
                 }
                 if (updateTaskText == true)
                 {
+                    chkTimer.Tick += (sender, e) => ChkWatchStart();
                     chkTimer.Tick += (sender, e) => TrayManager.UpdateInfo();
                 }
                 chkTimer.Start();
+            }
+        }
+
+        private void ChkWatchStart(bool chkOnly = false)
+        {
+            //視聴予約開始チェック
+            var list = CommonManager.Instance.DB.ReserveList.Values
+                                .Where(r => r.IsWatchMode && r.IsOnRec()).Select(r => r.ReserveID).ToList();
+            if (watchReserveOnRec.Count != list.Count || watchReserveOnRec.Except(list).Any())
+            {
+                if (chkOnly != true) RefreshAllViewsReserveInfo(UpdateViewMode.ReserveInfoNoAutoAdd);
+                watchReserveOnRec = list;
             }
         }
 
@@ -858,7 +869,7 @@ namespace EpgTimer
         private void Window_PreviewDrop(object sender, DragEventArgs e)
         {
             string[] filePath = e.Data.GetData(DataFormats.FileDrop, true) as string[];
-            SendAddReserveFromArgs(CommonManager.CreateSrvCtrl(), filePath);
+            if (filePath != null) SendAddReserveFromArgs(CommonManager.CreateSrvCtrl(), filePath);
         }
 
         private static void SendAddReserveFromArgs(CtrlCmdUtil cmd, IEnumerable<string> args)
@@ -935,60 +946,36 @@ namespace EpgTimer
 
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            if (e.Handled && e.IsRepeat) return;
+
             if (Keyboard.Modifiers == ModifierKeys.Control)
             {
                 switch (e.Key)
                 {
                     case Key.D1:
-                        if (e.IsRepeat == false)
-                        {
-                            this.tabItem_reserve.IsSelected = true;
-                        }
-                        e.Handled = true;
+                        tabItem_reserve.IsSelected = true;
                         break;
                     case Key.D2:
-                        if (e.IsRepeat == false)
-                        {
-                            this.tabItem_tunerReserve.IsSelected = true;
-                        }
-                        e.Handled = true;
+                        tabItem_tunerReserve.IsSelected = true;
                         break;
                     case Key.D3:
-                        if (e.IsRepeat == false)
-                        {
-                            this.tabItem_recinfo.IsSelected = true;
-                        }
-                        e.Handled = true;
+                        tabItem_recinfo.IsSelected = true;
                         break;
                     case Key.D4:
-                        if (e.IsRepeat == false)
-                        {
-                            this.tabItem_AutoAdd.IsSelected = true;
-                        }
-                        e.Handled = true;
+                        tabItem_AutoAdd.IsSelected = true;
                         break;
                     case Key.D5:
-                        if (e.IsRepeat == false)
-                        {
-                            this.tabItem_epg.IsSelected = true;
-                        }
-                        e.Handled = true;
+                        tabItem_epg.IsSelected = true;
                         break;
-                    case Key.D6:
-                        if (e.IsRepeat == false)
-                        {
-                            this.tabItem_recLog.IsSelected = true;
-                        }
-                        e.Handled = true;
-                        break;
-                    case Key.D7:
-                        if (e.IsRepeat == false)
-                        {
-                            this.tabItem_searchLog.IsSelected = true;
-                        }
-                        e.Handled = true;
-                        break;
+                    default:
+                        return;
                 }
+                e.Handled = true;
+            }
+            else if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.F5)
+            {
+                RefreshReserveInfo();
+                e.Handled = true;
             }
         }
 
@@ -1022,10 +1009,6 @@ namespace EpgTimer
             if (setting.setEpgView.IsChangeRecInfoDropExcept == true)
             {
                 CommonManager.Instance.DB.ResetRecFileErrInfo();
-            }
-            if (setting.setEpgView.IsChangeEpgArcLoadSetting == true)
-            {
-                CommonManager.Instance.DB.SetUpdateNotify(UpdateNotifyItem.EpgData);
             }
             if (Settings.Instance.NgAutoEpgLoadNW == false)
             {
@@ -1361,6 +1344,7 @@ namespace EpgTimer
             {
                 case UpdateNotifyItem.SrvStatus:
                     TrayManager.UpdateInfo(status.param1);
+                    if (status.param1 == 1) ChkWatchStart();
                     break;
                 case UpdateNotifyItem.PreRecStart:
                     NotifyWork();
@@ -1369,9 +1353,12 @@ namespace EpgTimer
                     break;
                 case UpdateNotifyItem.RecStart:
                     NotifyWork();
-                    RefreshAllViewsReserveInfo();
+                    RefreshAllViewsReserveInfo(UpdateViewMode.ReserveInfoNoAutoAdd);
                     break;
                 case UpdateNotifyItem.RecEnd:
+                    NotifyWork();
+                    ChkWatchStart(true);
+                    break;
                 case UpdateNotifyItem.RecTuijyu:
                 case UpdateNotifyItem.ChgTuijyu:
                 case UpdateNotifyItem.PreEpgCapStart:
@@ -1388,7 +1375,9 @@ namespace EpgTimer
                         err = CommonManager.Instance.DB.ReloadReserveRecFileNameList(true);
 
                         //EpgDataは遅延実行される場合があるので、処理内容には注意する。
+                        CommonManager.Instance.WaitingSrvReady = false;
                         CommonManager.Instance.DB.SetUpdateNotify(UpdateNotifyItem.EpgData);
+                        CommonManager.Instance.DB.ReloadEpgDatabaseInfo(true);
                         if (epgReload == true)
                         {
                             var err2 = CommonManager.Instance.DB.ReloadEpgData(false, true);
@@ -1408,23 +1397,23 @@ namespace EpgTimer
                     }
                     break;
                 case UpdateNotifyItem.ReserveInfo:
-                    if (WaitResNotify == true)
-                    {
-                        resNotifyWaiting.Add(status);
-                    }
-                    else
+                    //頻繁に来るときがあるので間引く
+                    MainProc(MainProcItem.ReserveInfo, () =>
                     {
                         err = CommonManager.Instance.DB.ReloadReserveInfo(true);
                         RefreshAllViewsReserveInfo();
                         UpdateReserveTab();
                         TrayManager.UpdateInfo();
                         StatusManager.StatusNotifyAppend("予約データ更新 < ");
-                    }
+                    });
                     break;
                 case UpdateNotifyItem.RecInfo:
                     {
-                        CommonManager.Instance.DB.SetUpdateNotify(UpdateNotifyItem.RecInfo);
+                        CommonManager.Instance.DB.ReloadRecFileInfo(true);
                         recInfoView.UpdateInfo();
+                        epgView.UpdateReserveInfo();
+                        SearchWindow.UpdatesRecinfo();
+                        AddReserveEpgWindow.UpdatesInfo(false);
                         InfoSearchWindow.UpdatesInfo();
                         RecInfoDescWindow.UpdatesInfo();
                         StatusManager.StatusNotifyAppend("録画済みデータ更新 < ");
@@ -1478,23 +1467,42 @@ namespace EpgTimer
             if (notifyLogWindowUpdate == true) NotifyLogWindow.UpdatesInfo();
         }
 
-        //自動予約登録変更時に頻繁に送られてくる予約情報更新を間引く。
-        private bool WaitResNotify = false;
-        private List<NotifySrvInfo> resNotifyWaiting = new List<NotifySrvInfo>();
-        public object ActionWaitResNotify(Func<object> work)
+        private Dictionary<MainProcItem, Action> mainProc = new Dictionary<MainProcItem, Action>();
+        public void MainProc(MainProcItem notifyID, Action work = null)
         {
-            WaitResNotify = true;
+            mainProc[notifyID] = work;
+
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                WaitResNotify = false;
-                foreach (var gr in resNotifyWaiting.GroupBy(st => st.notifyID))
+                foreach (var proc in mainProc)
                 {
-                    try { NotifyStatus(gr.First()); }
-                    catch { }
+                    switch (proc.Key)
+                    {
+                        case MainProcItem.EpgDataLoaded:
+                            reserveView.UpdateInfo();
+                            SearchWindow.UpdatesInfo(false);
+                            InfoSearchWindow.UpdatesInfo();
+                            AddReserveEpgWindow.UpdatesInfo();
+                            ChgReserveWindow.UpdatesInfo();
+                            break;
+                        case MainProcItem.EpgDataSearch:
+                            if (mainProc.ContainsKey(MainProcItem.ReserveInfo)) continue;
+                            if (mainProc.ContainsKey(MainProcItem.EpgDataLoaded)) continue;
+                            reserveView.UpdateInfo();
+                            InfoSearchWindow.UpdatesInfo();
+                            ChgReserveWindow.UpdatesInfo();
+                            break;
+                        case MainProcItem.EpgDataAddLoaded:
+                            if (mainProc.ContainsKey(MainProcItem.ReserveInfo)) continue;
+                            if (mainProc.ContainsKey(MainProcItem.EpgDataLoaded)) continue;
+                            if (mainProc.ContainsKey(MainProcItem.EpgDataSearch)) continue;
+                            ChgReserveWindow.UpdatesInfo();
+                            break;
+                    }
+                    if (proc.Value != null) proc.Value();
                 }
-                resNotifyWaiting.Clear();
-            }), DispatcherPriority.Background);
-            return work();
+                mainProc.Clear();
+            }));
         }
 
         void RefreshReserveInfo()
@@ -1528,7 +1536,7 @@ namespace EpgTimer
                 if (DB.ReloadReserveInfo(true) == ErrCode.CMD_SUCCESS && DB.ReserveList.Count != 0)
                 {
                     //予約一覧は一つでも更新をかければ、再構築される。
-                    CommonManager.CreateSrvCtrl().SendChgReserve(new List<ReserveData> { DB.ReserveList.Values.First() });
+                    CommonManager.CreateSrvCtrl().SendChgReserve(DB.ReserveList.Values.First().IntoList());
                 }
                 else
                 {
@@ -1540,20 +1548,6 @@ namespace EpgTimer
             }
             catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
 
-        }
-
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            if (Keyboard.Modifiers == ModifierKeys.None)
-            {
-                switch (e.Key)
-                {
-                    case Key.F5:
-                        RefreshReserveInfo();
-                        break;
-                }
-            }
-            base.OnKeyDown(e);
         }
 
         public void moveTo_tabItem(CtxmCode code)
@@ -1585,7 +1579,7 @@ namespace EpgTimer
                     return;
             }
             BlackoutWindow.NowJumpTable = true;
-            new BlackoutWindow(this).showWindow((tab.Header as string ?? tab.Tag).ToString());
+            new BlackoutWindow(this).showWindow(tab.Header as string ?? tab.Tag as string);
             this.Focus();//チューナー画面やEPG画面でのフォーカス対策。とりあえずこれで解決する。
             tab.IsSelected = false;//必ずOnVisibleChanged()を発生させるため。
             tab.IsSelected = true;

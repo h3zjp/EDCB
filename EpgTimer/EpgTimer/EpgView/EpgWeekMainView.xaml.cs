@@ -17,19 +17,33 @@ namespace EpgTimer
         protected override bool viewCustNeedTimeOnly { get { return viewInfo.NeedTimeOnlyWeek; } }
         private List<DateTime> dayList = new List<DateTime>();
 
-        protected class EpgViewStateWeek : EpgViewState { public ulong? selectID = null; }
-        public override EpgViewState GetViewState() { return new EpgViewStateWeek { viewMode = viewMode, selectID = GetSelectID() }; }
-        protected EpgViewStateWeek RestoreState { get { return restoreState as EpgViewStateWeek ?? new EpgViewStateWeek(); } }
+        protected class StateWeekMain : StateMainBase
+        {
+            public ulong? selectID = null;
+            public StateWeekMain() { }
+            public StateWeekMain(EpgWeekMainView view) : base(view) { selectID = view.GetSelectID(); }
+        }
+        public override EpgViewState GetViewState() { return new StateWeekMain(this); }
+        protected new StateWeekMain RestoreState { get { return restoreState as StateWeekMain ?? new StateWeekMain(); } }
 
         public EpgWeekMainView()
         {
             InitializeComponent();
-            SetControls(epgProgramView, timeView, weekDayView.scrollViewer, button_now);
+            SetControls(epgProgramView, timeView, weekDayView.scrollViewer);
+            SetControlsPeriod(timeJumpView, timeMoveView, button_now);
 
             base.InitCommand();
 
+            //時間関係の設定の続き
+            nowViewTimer.Tick += (sender, e) => weekDayView.SetTodayMark();
+
             //コマンド集の初期化の続き、ボタンの設定
             mBinds.SetCommandToButton(button_go_Main, EpgCmds.ViewChgMode, 0);
+        }
+        public override void SetViewData(EpgViewData data)
+        {
+            base.SetViewData(data);
+            weekDayView.SetViewData(viewData);
         }
 
         //週間番組表での時刻表現用のメソッド。
@@ -48,27 +62,29 @@ namespace EpgTimer
             try
             {
                 reserveList.Clear();
+                recinfoList.Clear();
 
                 UInt64 selectID = GetSelectID(true);
-                foreach (ReserveData info in CommonManager.Instance.DB.ReserveList.Values)
+                foreach (ReserveData info in CombinedReserveList())
                 {
                     if (selectID == info.Create64Key())
                     {
+                        //離れたプログラム予約など範囲外は除外。
+                        int dayPos = dayList.BinarySearch(GetViewDay(info.StartTime));
+                        if (dayPos < 0) continue;
+
                         ProgramViewItem dummy = null;
                         ReserveViewItem resItem = AddReserveViewItem(info, ref dummy);
                         if (resItem != null)
                         {
                             //横位置の設定
-                            resItem.Width = Settings.Instance.ServiceWidth;
-                            resItem.LeftPos = resItem.Width * dayList.BinarySearch(GetViewDay(info.StartTime));
-
-                            //範囲外は削除する。日を追加するのは簡単だが、viewCustNeedTimeOnly==trueで時間の方を追加するのが面倒すぎる。
-                            if (resItem.LeftPos < 0) reserveList.Remove(resItem);
+                            resItem.Width = this.EpgStyle().ServiceWidth;
+                            resItem.LeftPos = resItem.Width * dayPos;
                         }
                     }
                 }
 
-                epgProgramView.SetReserveList(reserveList);
+                epgProgramView.SetReserveList(dataItemList);
             }
             catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
         }
@@ -80,7 +96,7 @@ namespace EpgTimer
             try
             {
                 //表示していたサービスがあれば維持
-                comboBox_service.ItemsSource = serviceEventListOrderAdjust.Select(item => new ComboItem(item.serviceInfo.Create64Key(), item.serviceInfo.service_name));
+                comboBox_service.ItemsSource = serviceListOrderAdjust.Select(info => new ComboItem(info.Key, info.service_name));
                 comboBox_service.SelectedValue = RestoreState.selectID ?? GetSelectID();
                 if (comboBox_service.SelectedIndex < 0) comboBox_service.SelectedIndex = 0;
 
@@ -99,20 +115,20 @@ namespace EpgTimer
                 epgProgramView.ClearInfo();
                 timeList.Clear();
                 programList.Clear();
-                NowLineDelete();
+                ReDrawNowLine();
                 dayList.Clear();
 
                 UInt64 selectID = GetSelectID(true);
                 if (selectID == 0) return;
 
                 //リストの作成
-                int idx = serviceEventList.FindIndex(item => item.serviceInfo.Create64Key() == selectID);
+                int idx = serviceEventList.FindIndex(item => item.serviceInfo.Key == selectID);
                 if (idx < 0) return;
 
                 serviceEventList[idx].eventList.ForEach(eventInfo =>
                 {
                     //無いはずだが、ToDictionary()にせず、一応保険。
-                    programList[eventInfo.CurrentPgUID()] = new ProgramViewItem(eventInfo);
+                    programList[eventInfo.CurrentPgUID()] = new ProgramViewItem(eventInfo) { EpgSettingIndex = viewInfo.EpgSettingIndex };
                 });
 
                 //日付リスト構築
@@ -121,7 +137,7 @@ namespace EpgTimer
                 //横位置の設定
                 foreach (ProgramViewItem item in programList.Values)
                 {
-                    item.Width = Settings.Instance.ServiceWidth;
+                    item.Width = this.EpgStyle().ServiceWidth;
                     item.LeftPos = item.Width * dayList.BinarySearch(GetViewDay(item.Data.start_time));
                 }
 
@@ -133,8 +149,8 @@ namespace EpgTimer
                 SetProgramViewItemVertical();
 
                 epgProgramView.SetProgramList(programList.Values.ToList(),
-                    dayList.Count * Settings.Instance.ServiceWidth,
-                    timeList.Count * 60 * Settings.Instance.MinHeight);
+                    dayList.Count * this.EpgStyle().ServiceWidth,
+                    timeList.Count * 60 * this.EpgStyle().MinHeight);
 
                 timeView.SetTime(timeList, true);
                 weekDayView.SetDay(dayList);
@@ -160,21 +176,34 @@ namespace EpgTimer
                 if (alternativeSelect == false || comboBox_service.Items.Count == 0) return 0;
                 idx = 0;
             }
-            return ((ComboItem)comboBox_service.Items[idx]).Key;
+            return (UInt64)comboBox_service.SelectedValue;
         }
 
+        //実際には切り替えないと分からない
+        public override int MoveToItem(UInt64 id, JumpItemStyle style = JumpItemStyle.MoveTo, bool dryrun = false)
+        {
+            UInt64 key = CommonManager.Reverse64Key(id);
+            if (dryrun == true) return viewData.HasKey(key) ? 1 : -1;
+            if (key != 0) ChangeViewService(key);
+            return base.MoveToItem(id, style, dryrun);
+        }
         public override int MoveToReserveItem(ReserveData target, JumpItemStyle style = JumpItemStyle.MoveTo, bool dryrun = false)
         {
-            //実際には切り替えないと分からない
-            if (dryrun == true) return target == null ? -1 : viewInfo.ViewServiceList.IndexOf(target.Create64Key());
+            if (dryrun == true) return target == null ? -1 : viewData.HasKey(target.Create64Key()) ? 1 : -1;
             if (target != null) ChangeViewService(target.Create64Key());
             return base.MoveToReserveItem(target, style);
         }
         public override int MoveToProgramItem(EpgEventInfo target, JumpItemStyle style = JumpItemStyle.MoveTo, bool dryrun = false)
         {
-            if (dryrun == true) return target == null ? -1 : viewInfo.ViewServiceList.IndexOf(target.Create64Key());
+            if (dryrun == true) return target == null ? -1 : viewData.HasKey(target.Create64Key()) ? 1 : -1;
             if (target != null) ChangeViewService(target.Create64Key());
             return base.MoveToProgramItem(target, style);
+        }
+        public override int MoveToRecInfoItem(RecFileInfo target, JumpItemStyle style = JumpItemStyle.MoveTo, bool dryrun = false)
+        {
+            if (dryrun == true) return target == null ? -1 : viewData.HasKey(target.Create64Key()) ? 1 : -1;
+            if (target != null) ChangeViewService(target.Create64Key());
+            return base.MoveToRecInfoItem(target, style);
         }
         protected void ChangeViewService(UInt64 id)
         {

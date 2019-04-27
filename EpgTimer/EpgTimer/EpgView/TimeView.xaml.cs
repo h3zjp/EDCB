@@ -11,13 +11,19 @@ namespace EpgTimer.EpgView
     /// <summary>
     /// TimeView.xaml の相互作用ロジック
     /// </summary>
-    public partial class TimeView : UserControl
+    public partial class TimeView : UserControl, IEpgSettingAccess, IEpgViewDataSet
     {
         public TimeView()
         {
             InitializeComponent();
             scrollViewer.PreviewMouseWheel += new MouseWheelEventHandler((sende, e) => e.Handled = true);
-            this.Background = CommonManager.Instance.EpgTimeBorderColor;
+        }
+
+        public int EpgSettingIndex { get; private set; }
+        public void SetViewData(EpgViewData data)
+        {
+            EpgSettingIndex = data.EpgSettingIndex;
+            Background = this.EpgBrushCache().TimeBorderColor;
         }
 
         public void ClearInfo()
@@ -27,7 +33,6 @@ namespace EpgTimer.EpgView
 
         public void SetTime(List<DateTime> timeList, bool weekMode, bool tunerMode = false)
         {
-            try
             {
                 stackPanel_time.Children.Clear();
                 bool? use28 = Settings.Instance.LaterTimeUse == true ? null : (bool?)false;
@@ -46,12 +51,12 @@ namespace EpgTimer.EpgView
 
                     if (tunerMode == false)
                     {
-                        item.Foreground = CommonManager.Instance.EpgTimeFontColor;
-                        item.Background = CommonManager.Instance.CustTimeColorList[time1.Hour / 6];
-                        item.Height = 60 * Settings.Instance.MinHeight - item.Margin.Top - item.Margin.Bottom;
+                        item.Foreground = this.EpgBrushCache().TimeFontColor;
+                        item.Background = this.EpgBrushCache().TimeColorList[time1.Hour / 6];
+                        item.Height = 60 * this.EpgStyle().MinHeight - item.Margin.Top - item.Margin.Bottom;
                         if (weekMode == false)
                         {
-                            item.Inlines.Add(new Run(time.ToString("M/d\r\n")));
+                            item.Inlines.Add(new Run(time.ToString("M\\/d\r\n")));
                             if (item.Height >= h3L)
                             {
                                 var color = time.DayOfWeek == DayOfWeek.Sunday ? Brushes.Red : time.DayOfWeek == DayOfWeek.Saturday ? Brushes.Blue : item.Foreground;
@@ -65,15 +70,14 @@ namespace EpgTimer.EpgView
                     }
                     else
                     {
-                        item.Foreground = time.DayOfWeek == DayOfWeek.Sunday ? Brushes.Red : time.DayOfWeek == DayOfWeek.Saturday ? Brushes.Blue : CommonManager.Instance.TunerTimeFontColor;
-                        item.Background = CommonManager.Instance.TunerTimeBackColor;
+                        item.Foreground = time.DayOfWeek == DayOfWeek.Sunday ? Brushes.Red : time.DayOfWeek == DayOfWeek.Saturday ? Brushes.Blue : Settings.BrushCache.TunerTimeFontColor;
+                        item.Background = Settings.BrushCache.TunerTimeBackColor;
                         item.Height = 60 * Settings.Instance.TunerMinHeight - item.Margin.Top - item.Margin.Bottom;
-                        item.Text = time.ToString("M/d\r\n" + (item.Height >= h3L ? "(ddd)\r\n" : ""))
+                        item.Text = time.ToString("M\\/d\r\n" + (item.Height >= h3L ? "(ddd)\r\n" : ""))
                                                             + (item.Height >= h6L ? "\r\n" : "") + HourMod;
                     }
                 }
             }
-            catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
         }
     }
 }

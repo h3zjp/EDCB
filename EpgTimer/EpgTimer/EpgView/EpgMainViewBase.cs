@@ -4,19 +4,26 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Shapes;
 using System.Windows.Threading;
-using System.Windows.Media;
 
 namespace EpgTimer.EpgView
 {
     public class EpgMainViewBase : EpgViewBase
     {
+        protected class StateMainBase : StateBase
+        {
+            public StateMainBase() { }
+            public StateMainBase(EpgMainViewBase view) : base(view) { scrollTime = view.GetScrollTime(); }
+        }
+        //public override EpgViewState GetViewState() { return new StateMainBase(this); }
+        //protected new StateMainBase RestoreState { get { return restoreState as StateMainBase ?? new StateMainBase(); } }
+
         protected Dictionary<UInt64, ProgramViewItem> programList = new Dictionary<UInt64, ProgramViewItem>();
         protected List<ReserveViewItem> reserveList = new List<ReserveViewItem>();
+        protected List<ReserveViewItem> recinfoList = new List<ReserveViewItem>();
+        protected IEnumerable<ReserveViewItem> dataItemList { get { return recinfoList.Concat(reserveList); } }
         protected List<DateTime> timeList = new List<DateTime>();
         protected DispatcherTimer nowViewTimer;
-        protected Line nowLine = null;
         protected Point clickPos;
 
         private ProgramView programView = null;
@@ -30,15 +37,21 @@ namespace EpgTimer.EpgView
             base.InitCommand();
 
             //コマンド集の初期化の続き
-            mc.SetFuncGetDataList(isAll => isAll == true ? reserveList.GetDataList() : reserveList.GetHitDataList(clickPos));
+            mc.SetFuncGetDataList(isAll => isAll == true ? dataItemList.GetDataList() : dataItemList.GetHitDataList(clickPos));
             mc.SetFuncGetEpgEventList(() => 
             {
                 ProgramViewItem hitItem = programView.GetProgramViewData(clickPos);
-                return hitItem != null && hitItem.Data != null ? CommonUtil.ToList(hitItem.Data) : new List<EpgEventInfo>();
+                return hitItem != null && hitItem.Data != null ? new List<EpgEventInfo> { hitItem.Data } : new List<EpgEventInfo>();
             });
 
             //コマンド集からコマンドを登録
             mc.ResetCommandBindings(this, cmdMenu);
+
+            //現在ラインの描画を追加
+            nowViewTimer = new DispatcherTimer(DispatcherPriority.Normal);
+            nowViewTimer.Tick += (sender, e) => ReDrawNowLine();
+            this.Unloaded += (sender, e) => nowViewTimer.Stop();//アンロード時にReDrawNowLine()しないパスがある。
+            this.IsVisibleChanged += (sender, e) => ReDrawNowLine();
         }
         protected override void RefreshMenuInfo()
         {
@@ -47,22 +60,22 @@ namespace EpgTimer.EpgView
             mm.CtxmGenerateContextMenu(cmdMenu, CtxmCode.EpgView, false);
         }
 
-        public void SetControls(ProgramView pv, TimeView tv, ScrollViewer hv, Button button_now)
+        public override void SetViewData(EpgViewData data)
+        {
+            base.SetViewData(data);
+            programView.SetViewData(viewData);
+            timeView.SetViewData(viewData);
+        }
+        public void SetControls(ProgramView pv, TimeView tv, ScrollViewer hv)
         {
             programView = pv;
             timeView = tv;
             horizontalViewScroll = hv;
 
-            programView.ScrollChanged += new ScrollChangedEventHandler(epgProgramView_ScrollChanged);
+            programView.ScrollChanged += epgProgramView_ScrollChanged;
             programView.LeftDoubleClick += (sender, cursorPos) => EpgCmds.ShowDialog.Execute(null, cmdMenu);
             programView.MouseClick += (sender, cursorPos) => clickPos = cursorPos;
-            programView.RightClick += new ProgramView.PanelViewClickHandler(epgProgramView_RightClick);
-            
-            nowViewTimer = new DispatcherTimer(DispatcherPriority.Normal);
-            nowViewTimer.Tick += (sender, e) => ReDrawNowLine();
-            this.Unloaded += (sender, e) => nowViewTimer.Stop();
-
-            button_now.Click += new RoutedEventHandler((sender, e) => MoveNowTime());
+            programView.RightClick += epgProgramView_RightClick;
         }
 
         protected override void UpdateStatusData(int mode = 0)
@@ -71,10 +84,9 @@ namespace EpgTimer.EpgView
                 + ViewUtil.ConvertReserveStatus(reserveList.GetDataList(), "　予約");
         }
 
-        protected virtual DateTime GetViewTime(DateTime time)
-        {
-            return time;
-        }
+        protected virtual DateTime GetViewTime(DateTime time) { return time; }
+        protected virtual DateTime LimitedStart(IBasicPgInfo info) { return info.PgStartTime; }
+        protected virtual uint LimitedDuration(IBasicPgInfo info) { return info.PgDurationSecond; }
 
         /// <summary>番組の縦表示位置設定</summary>
         protected virtual void SetProgramViewItemVertical()
@@ -85,7 +97,7 @@ namespace EpgTimer.EpgView
                 var timeSet = new HashSet<DateTime>();
                 foreach (ProgramViewItem item in programList.Values)
                 {
-                    ViewUtil.AddTimeList(timeSet, GetViewTime(item.Data.start_time), item.Data.PgDurationSecond);
+                    ViewUtil.AddTimeList(timeSet, GetViewTime(LimitedStart(item.Data)), LimitedDuration(item.Data));
                 }
                 timeList.AddRange(timeSet.OrderBy(time => time));
             }
@@ -93,46 +105,41 @@ namespace EpgTimer.EpgView
             //縦位置を設定
             foreach (ProgramViewItem item in programList.Values)
             {
-                ViewUtil.SetItemVerticalPos(timeList, item, GetViewTime(item.Data.start_time), item.Data.durationSec, Settings.Instance.MinHeight, viewCustNeedTimeOnly);
+                ViewUtil.SetItemVerticalPos(timeList, item, GetViewTime(LimitedStart(item.Data)), LimitedDuration(item.Data), this.EpgStyle().MinHeight, viewCustNeedTimeOnly);
             }
 
             //最低表示行数を適用。また、最低表示高さを確保して、位置も調整する。
-            ViewUtil.ModifierMinimumLine(programList.Values, Settings.Instance.MinimumHeight, Settings.Instance.FontSizeTitle, Settings.Instance.EpgBorderTopSize);
+            ViewUtil.ModifierMinimumLine(programList.Values, this.EpgStyle().MinimumHeight, this.EpgStyle().FontSizeTitle, this.EpgStyle().EpgBorderTopSize);
 
             //必要時間リストの修正。番組長の関係や、最低表示行数の適用で下に溢れた分を追加する。
-            ViewUtil.AdjustTimeList(programList.Values, timeList, Settings.Instance.MinHeight);
+            ViewUtil.AdjustTimeList(programList.Values, timeList, this.EpgStyle().MinHeight);
         }
 
         protected virtual ReserveViewItem AddReserveViewItem(ReserveData resInfo, ref ProgramViewItem refPgItem, bool SearchEvent = false)
         {
+            //LimitedStart()の関係で判定出来ないものを除外
+            if (timeList.Any() == false || resInfo.IsManual && resInfo.IsOver(timeList[0])) return null;
+
             //マージン適用前
-            DateTime startTime = GetViewTime(resInfo.StartTime);
+            DateTime startTime = GetViewTime(LimitedStart(resInfo));
             DateTime chkStartTime = startTime.Date.AddHours(startTime.Hour);
 
             //離れた時間のプログラム予約など、番組表が無いので表示不可
             int index = timeList.BinarySearch(chkStartTime);
             if (index < 0) return null;
 
-            //EPG予約の場合は番組の外側に予約枠が飛び出さないようなマージンを作成。
-            double StartMargin = resInfo.IsEpgReserve == false ? resInfo.StartMarginResActual : Math.Min(0, resInfo.StartMarginResActual);
-            double EndMargin = resInfo.IsEpgReserve == false ? resInfo.EndMarginResActual : Math.Min(0, resInfo.EndMarginResActual);
-
-            //duationがマイナスになる場合は後で処理される
-            startTime = startTime.AddSeconds(-StartMargin);
-            double duration = resInfo.DurationSecond + StartMargin + EndMargin;
-
-            var resItem = new ReserveViewItem(resInfo);
-            reserveList.Add(resItem);
+            var resItem = new ReserveViewItem(resInfo) { EpgSettingIndex = viewInfo.EpgSettingIndex, ViewMode = viewMode };
+            (resInfo is ReserveDataEnd ? recinfoList : reserveList).Add(resItem);
 
             //予約情報から番組情報を特定し、枠表示位置を再設定する
             refPgItem = null;
             programList.TryGetValue(resInfo.CurrentPgUID(), out refPgItem);
             if (refPgItem == null && SearchEvent == true)
             {
-                EpgEventInfo epgInfo = resInfo.ReserveEventInfo();
-                if (epgInfo != null)
+                EpgEventInfo epgInfo;
+                if (viewData.EventUIDList.TryGetValue(resInfo.CurrentPgUID(), out epgInfo))
                 {
-                    EpgEventInfo epgRefInfo = epgInfo.GetGroupMainEvent();
+                    EpgEventInfo epgRefInfo = epgInfo.GetGroupMainEvent(viewData.EventUIDList);
                     if (epgRefInfo != null)
                     {
                         programList.TryGetValue(epgRefInfo.CurrentPgUID(), out refPgItem);
@@ -140,21 +147,38 @@ namespace EpgTimer.EpgView
                 }
             }
 
-            if (resInfo.IsEpgReserve == true && refPgItem != null && resInfo.DurationSecond != 0)
+            //EPG予約の場合は番組の外側に予約枠が飛び出さないようなマージンを作成。
+            double StartMargin = resInfo.IsEpgReserve == false ? resInfo.StartMarginResActual : Math.Min(0, resInfo.StartMarginResActual);
+            double EndMargin = resInfo.IsEpgReserve == false ? resInfo.EndMarginResActual : Math.Min(0, resInfo.EndMarginResActual);
+
+            if (resInfo.IsEpgReserve && resInfo.DurationSecond != 0 && refPgItem != null)
             {
+                //duationがマイナスになる場合は後で処理される
+                double duration = resInfo.DurationSecond + StartMargin + EndMargin;
                 resItem.Height = Math.Max(refPgItem.Height * duration / resInfo.DurationSecond, ViewUtil.PanelMinimumHeight);
                 resItem.TopPos = refPgItem.TopPos + Math.Min(refPgItem.Height - resItem.Height, refPgItem.Height * (-StartMargin) / resInfo.DurationSecond);
             }
             else
             {
-                resItem.Height = Math.Max(duration * Settings.Instance.MinHeight / 60, ViewUtil.PanelMinimumHeight);
-                resItem.TopPos = Settings.Instance.MinHeight * (index * 60 + (startTime - chkStartTime).TotalMinutes);
+                double adj = (LimitedStart(resInfo) - resInfo.PgStartTime).TotalSeconds;
+                StartMargin = Math.Min(0, StartMargin + adj);
+                double duration = resInfo.DurationSecond + StartMargin + EndMargin - adj;
+                startTime = startTime.AddSeconds(-StartMargin);
+                resItem.Height = Math.Max(duration * this.EpgStyle().MinHeight / 60, ViewUtil.PanelMinimumHeight);
+                resItem.TopPos = this.EpgStyle().MinHeight * (index * 60 + (startTime - chkStartTime).TotalMinutes);
             }
             return resItem;
         }
 
+        protected IEnumerable<ReserveData> CombinedReserveList()
+        {
+            Func<IAutoAddTargetData, bool> InDic = r => viewData.EventUIDList.ContainsKey(r.CurrentPgUID()) || (UInt16)r.CurrentPgUID() == 0xFFFF;
+            return CommonManager.Instance.DB.RecFileInfo.Values.Where(r => InDic(r)).Select(r => r.ToReserveData())
+                    .Concat(CommonManager.Instance.DB.ReserveList.Values.Where(r => InDic(r)));
+        }
+
         /// <summary>表示スクロールイベント呼び出し</summary>
-        protected void epgProgramView_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        protected virtual void epgProgramView_ScrollChanged(object sender, ScrollChangedEventArgs e)
         {
             programView.view_ScrollChanged(programView.scrollViewer, timeView.scrollViewer, horizontalViewScroll);
         }
@@ -188,7 +212,7 @@ namespace EpgTimer.EpgView
         {
             if (programList.Count == 0) return null;
 
-            var list = programList.Values.OrderBy(item => (int)(item.LeftPos / Settings.Instance.ServiceWidth) * 1e6 + item.TopPos + item.Width / Settings.Instance.ServiceWidth / 100).ToList();
+            var list = programList.Values.OrderBy(item => (int)(item.LeftPos / this.EpgStyle().ServiceWidth) * 1e6 + item.TopPos + item.Width / this.EpgStyle().ServiceWidth / 100).ToList();
             int idx = list.FindIndex(item => item.Data.CurrentPgUID() == id);
             idx = ViewUtil.GetNextIdx(ItemIdx, idx, list.Count, direction);
             if (move == true) programView.ScrollToFindItem(list[idx], style);
@@ -206,7 +230,17 @@ namespace EpgTimer.EpgView
         }
         public override int MoveToProgramItem(EpgEventInfo target, JumpItemStyle style = JumpItemStyle.MoveTo, bool dryrun = false)
         {
+            target = target == null ? null : target.GetGroupMainEvent(viewData.EventUIDList);
             return MoveToItem(target == null ? 0 : target.CurrentPgUID(), style, dryrun);
+        }
+        public override int MoveToRecInfoItem(RecFileInfo target, JumpItemStyle style = JumpItemStyle.MoveTo, bool dryrun = false)
+        {
+            if (target == null) return -1;
+            UInt64 id = target.CurrentPgUID();
+            int idx = recinfoList.FindIndex(item => item.Data.CurrentPgUID() == id);
+            if (idx != -1 && dryrun == false) programView.ScrollToFindItem(recinfoList[idx], style);
+            if (dryrun == false) ItemIdx = idx;
+            return idx;
         }
 
         protected int resIdx = -1;
@@ -214,72 +248,63 @@ namespace EpgTimer.EpgView
         {
             return ViewUtil.MoveNextReserve(ref resIdx, programView, reserveList, ref clickPos, id, direction, move, style);
         }
-        
-        /// <summary>表示位置を現在の時刻にスクロールする</summary>
-        protected void MoveNowTime()
+
+        protected int recIdx = -1;
+        public override object MoveNextRecinfo(int direction, UInt64 id = 0, bool move = true, JumpItemStyle style = JumpItemStyle.MoveTo)
         {
-            try
-            {
-                int idx = timeList.BinarySearch(GetViewTime(DateTime.UtcNow.AddHours(9)));
-                double pos = ((idx < 0 ? ~idx : idx) - 1) * 60 * Settings.Instance.MinHeight - 120;
-                programView.scrollViewer.ScrollToVerticalOffset(Math.Max(0, pos));
-            }
-            catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
+            return MenuUtil.GetRecFileInfo(ViewUtil.MoveNextReserve(ref recIdx, programView, recinfoList, ref clickPos, id, direction, move, style) as ReserveDataEnd);
         }
+
+        /// <summary>表示位置を現在の時刻にスクロールする</summary>
+        protected override void MoveNowTime()
+        {
+            DateTime current = RestoreState.scrollTime ?? GetViewTime(CommonUtil.EdcbNow);
+            //再描画のときは再描画前の時間かその近くに飛ぶが、過去番組移動の時は最初に出てくる同時刻に飛ぶ
+            if (RestoreState.isJumpDate == true)
+            {
+                int idx = timeList.FindIndex(time => time.Hour == current.Hour);
+                current = idx >= 0 ? timeList[idx] : ViewPeriod.Start.AddHours(current.Hour);
+            }
+            MoveTime(current, RestoreState.scrollTime == null ? -120 : 0);
+        }
+        protected void MoveTime(DateTime time, int offset = 0)
+        {
+            int idx = timeList.BinarySearch(time.AddSeconds(1));
+            double pos = Math.Max(0, ((idx < 0 ? ~idx : idx) - 1) * 60 * this.EpgStyle().MinHeight + offset);
+            double back = programView.scrollViewer.VerticalOffset;
+            programView.scrollViewer.ScrollToVerticalOffset(pos);
+            if (pos == back) epgProgramView_ScrollChanged(null, null);//ScrollChangedEventArgsがCreate出来ない(RaiseEvent出来ない)ので
+        }
+        protected DateTime GetScrollTime()
+        {
+            if (timeList.Any() == false) return DateTime.MinValue;
+            var idx = (int)(programView.scrollViewer.VerticalOffset / 60 / this.EpgStyle().MinHeight);
+            return timeList[Math.Max(0, Math.Min(idx, timeList.Count - 1))];
+        }
+        protected override void SetJumpState() { restoreState = new StateMainBase { scrollTime = GetScrollTime(), isJumpDate = true }; }
+
         /// <summary>現在ライン表示</summary>
         protected virtual void ReDrawNowLine()
         {
-            try
-            {
-                nowViewTimer.Stop();
-
-                if (timeList.Count == 0) return;
-
-                DateTime nowTime = GetViewTime(DateTime.UtcNow.AddHours(9));
-                int idx = timeList.BinarySearch(nowTime.Date.AddHours(nowTime.Hour));
-                double posY = (idx < 0 ? ~idx * 60 : (idx * 60 + nowTime.Minute)) * Settings.Instance.MinHeight;
-
-                if (nowLine == null) NowLineGenerate();
-
-                nowLine.X1 = 0;
-                nowLine.Y1 = posY;
-                nowLine.X2 = programView.epgViewPanel.Width;
-                nowLine.Y2 = posY;
-
-                nowViewTimer.Interval = TimeSpan.FromSeconds(60 - nowTime.Second);
-                nowViewTimer.Start();
-            }
-            catch { }
-        }
-        protected virtual void NowLineGenerate()
-        {
-            nowLine = new Line();
-            Canvas.SetZIndex(nowLine, 15);
-            nowLine.Stroke = Brushes.Red;
-            nowLine.StrokeThickness = 3;
-            nowLine.Opacity = 0.7;
-            nowLine.Effect = new System.Windows.Media.Effects.DropShadowEffect() { BlurRadius = 10 };
-            nowLine.IsHitTestVisible = false;
-            this.programView.canvas.Children.Add(nowLine);
-        }
-        protected virtual void NowLineDelete()
-        {
             nowViewTimer.Stop();
-            this.programView.canvas.Children.Remove(nowLine);
-            nowLine = null;
-        }
+            programView.nowLine.Visibility = Visibility.Hidden;
+            var now = CommonUtil.EdcbNow;
+            if (this.IsVisible == false || timeList.Any() == false || now >= ViewPeriod.End.AddDays(1)) return;
 
-        protected override void UserControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
-        {
-            if (this.IsVisible == false)
+            //今は表示されない場合でも、そのうち表示されるかもしれない
+            if (ViewPeriod.StartLoad <= now)
             {
-                nowViewTimer.Stop();
+                int idx = timeList.BinarySearch(GetViewTime(now).Date.AddHours(now.Hour));
+                double posY = (idx < 0 ? ~idx * 60 : (idx * 60 + now.Minute)) * this.EpgStyle().MinHeight;
+
+                programView.nowLine.X1 = 0;
+                programView.nowLine.Y1 = posY;
+                programView.nowLine.X2 = programView.epgViewPanel.Width;
+                programView.nowLine.Y2 = posY;
+                programView.nowLine.Visibility = Visibility.Visible;
             }
-            else if (nowLine != null)
-            {
-                ReDrawNowLine();
-            }
-            base.UserControl_IsVisibleChanged(sender, e);
+            nowViewTimer.Interval = TimeSpan.FromSeconds(60 - now.Second);
+            nowViewTimer.Start();
         }
     }
 }

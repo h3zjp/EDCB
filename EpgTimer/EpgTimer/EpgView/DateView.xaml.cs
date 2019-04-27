@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Shapes;
 
 namespace EpgTimer.EpgView
 {
@@ -12,7 +14,7 @@ namespace EpgTimer.EpgView
     /// </summary>
     public partial class DateView : UserControl
     {
-        public event RoutedEventHandler TimeButtonClick = null;
+        public event Action<DateTime, bool> TimeButtonClick = (time, isDayMove) => { };
 
         public DateView()
         {
@@ -21,59 +23,88 @@ namespace EpgTimer.EpgView
 
         public void ClearInfo()
         {
-            uniformGrid_day.Children.Clear();
-            uniformGrid_time.Children.Clear();
+            uniformGrid_main.Children.Clear();
         }
 
-        public void SetTime(List<DateTime> timeList)
+        int span = 6;
+        public void SetTime(List<DateTime> timeList, EpgViewPeriod period)
         {
-            try
-            {
-                ClearInfo();
-                if (timeList.Any() != true) return;
+            ClearInfo();
+            if (timeList.Any() == false) return;
 
-                DateTime itemTime = timeList.First().Date;
-                while (itemTime <= timeList.Last())
+            span = 6;
+            DateTime start = CommonUtil.Max(timeList[0], period.Start);
+            DateTime end = CommonUtil.Min(timeList[timeList.Count - 1], period.End);
+
+            for (DateTime itemTime = start.Date; itemTime == start.Date || itemTime < end; itemTime += TimeSpan.FromDays(1))
+            {
+                var day = new Button();
+                day.Padding = new Thickness(1);
+                day.Content = itemTime.ToString("M\\/d(ddd)");
+                if (itemTime.DayOfWeek == DayOfWeek.Saturday) day.Foreground = Brushes.Blue;
+                if (itemTime.DayOfWeek == DayOfWeek.Sunday) day.Foreground = Brushes.Red;
+                day.Tag = itemTime;
+                day.Height = 21;
+                day.VerticalAlignment = VerticalAlignment.Top;
+                day.Click += (sender, e) => TimeButtonClick((DateTime)((Button)sender).Tag, true);//itemTimeはC#4以下でNG
+
+                var uGrid = new UniformGrid();
+                uGrid.Margin = new Thickness { Top = day.Height };
+                uGrid.Rows = 1;
+                for (int i = 0; i < 24; i += span)
                 {
-                    var day = new Button();
-                    day.Padding = new Thickness(1);
-                    day.Content = itemTime.ToString("M/d(ddd)");
-                    if (itemTime.DayOfWeek == DayOfWeek.Saturday)
-                    {
-                        day.Foreground = Brushes.Blue;
-                    }
-                    else if (itemTime.DayOfWeek == DayOfWeek.Sunday)
-                    {
-                        day.Foreground = Brushes.Red;
-                    }
-                    day.DataContext = itemTime;
-                    day.Click += new RoutedEventHandler(button_time_Click);
-                    uniformGrid_day.Children.Add(day);
-
-                    for (int i = 6; i <= 18; i += 6)
-                    {
-                        var hour = new Button();
-                        hour.Padding = new Thickness(1);
-                        hour.Content = i.ToString();
-                        hour.DataContext = itemTime.AddHours(i);
-                        hour.Click += new RoutedEventHandler(button_time_Click);
-                        uniformGrid_time.Children.Add(hour);
-                    }
-
-                    itemTime += TimeSpan.FromDays(1);
+                    DateTime time = itemTime.AddHours(i);
+                    var hour = new Button();
+                    hour.Padding = new Thickness();
+                    hour.Content = new TextBlock { Text = i.ToString() };
+                    hour.Tag = time;
+                    hour.Height = 21;
+                    hour.Click += (sender, e) => TimeButtonClick((DateTime)((Button)sender).Tag, false);
+                    hour.IsEnabled = start.AddHours(-span) < time && time <= end;
+                    uGrid.Children.Add(hour);
                 }
-            
-                columnDefinition.MinWidth = uniformGrid_time.Children.Count * 15;
-                columnDefinition.MaxWidth = uniformGrid_time.Children.Count * 40;
+
+                //日付のマーキング。
+                var rect = new Rectangle();
+                rect.Stroke = day.Foreground;
+                rect.StrokeThickness = 2;
+                rect.RadiusX = 1;
+                rect.RadiusY = 1;
+                rect.Tag = itemTime;
+
+                //別のUniformGridに並べるとSetScrollTime()の後装飾でずれる場合があるようなので、Gridでまとめる
+                var grid = new Grid();
+                grid.Children.Add(day);
+                grid.Children.Add(uGrid);
+                grid.Children.Add(rect);
+                uniformGrid_main.Children.Add(grid);
             }
-            catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
+            columnDefinition.MaxWidth = uniformGrid_main.Children.Count * 120;
+            SetTodayMark();
         }
 
-        void button_time_Click(object sender, RoutedEventArgs e)
+        public void SetTodayMark()
         {
-            if (TimeButtonClick != null)
+            var date = CommonUtil.EdcbNow.Date;
+            foreach (Rectangle rect in uniformGrid_main.Children.OfType<Grid>().Select(grd => grd.Children[2]))
             {
-                TimeButtonClick(sender, e);
+                rect.Visibility = (DateTime)rect.Tag == date ? Visibility.Visible : Visibility.Hidden;
+            }
+        }
+        public void SetScrollTime(DateTime time)
+        {
+            var DayBtns = uniformGrid_main.Children.OfType<Grid>().Select(grd => (Button)grd.Children[0]).ToList();
+            var TimeBtns = uniformGrid_main.Children.OfType<Grid>().SelectMany(grd => ((Panel)grd.Children[1]).Children.OfType<Button>()).ToList();
+            if (TimeBtns.Any() == false) return;
+            time = CommonUtil.Max((DateTime)TimeBtns[0].Tag, CommonUtil.Min((DateTime)TimeBtns.Last().Tag, time));
+            time = time.Date.AddHours(time.Hour - time.Hour % span);
+            foreach (Button btn in DayBtns)
+            {
+                btn.FontWeight = (DateTime)btn.Tag == time.Date ? FontWeights.Bold : FontWeights.Normal;
+            }
+            foreach (Button btn in TimeBtns)
+            {
+                (btn.Content as TextBlock).TextDecorations = (DateTime)btn.Tag == time ? TextDecorations.Underline : null;
             }
         }
     }

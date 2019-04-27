@@ -31,8 +31,12 @@ namespace EpgTimer
             tabControl.MouseRightButtonUp += EpgTabContextMenuOpen;
             grid_viewMode.PreviewMouseRightButtonUp += EpgTabContextMenuOpen;
 
+            //タブ関係
+            viewInfo = new EpgDataViewInfo(this);
+            viewInterface = new EpgDataViewInterface(this);
+
             //コマンドだと細かく設定しないといけないパターンなのでこの辺りで一括指定
-            this.PreviewKeyDown += (sender, e) => ViewUtil.OnKyeMoveNextReserve(sender, e, ActiveView);
+            this.PreviewKeyDown += (sender, e) => ViewUtil.OnKeyMoveNextReserve(sender, e, ActiveView);
         }
 
         /// <summary>選択されている番組表を返す</summary>
@@ -136,7 +140,7 @@ namespace EpgTimer
                 tabInfo = Settings.Instance.UseCustomEpgView == false ?
                     CommonManager.CreateDefaultTabInfo() : Settings.Instance.CustomEpgTabList.ToList();
 
-                //とりあえず同じIDを探して表示してみる(中身は別物になってるかもしれないが、とりあえず表示を試みる)。
+                //とりあえず同じIDを探して表示してみる(中身は別物になってるかもしれないが、表示を試みる)。
                 //標準・カスタム切り替えの際は、標準番組表が負のIDを与えられているので、このコードは走らない。
                 foreach (CustomEpgTabInfo info in tabInfo.Where(info => info.IsVisible == true))
                 {
@@ -220,29 +224,31 @@ namespace EpgTimer
                 if (trg == null) return false;
 
                 var data = (AutoAddTargetData)trg.ReserveInfo ?? trg.EventInfo;
-                if (data == null) return false;
+                if (data == null || data.PgStartTime == DateTime.MaxValue) return false;
 
                 if (Tabs.Any() == false)//dryrun以外でここに来るときは本当にタブが無い
                 {
                     var infoList = Settings.Instance.UseCustomEpgView == false ?
                         CommonManager.CreateDefaultTabInfo() : Settings.Instance.CustomEpgTabList.ToList();
                     return infoList.Where(info => info.IsVisible == true)
-                        .SelectMany(info => info.ViewServiceList).Contains(data.Create64Key());
+                        .SelectMany(info => CommonManager.Instance.DB.ExpandSpecialKey(info.ViewServiceList)).Contains(data.Create64Key());
                 }
-                var tab = Tabs.OrderBy(tb => tb.IsSelected ? 0 : 1).FirstOrDefault(tb =>
-                {
-                    bool ret = tb.Info.ViewServiceList.Contains(data.Create64Key());
-                    if (ret == true && tb.view != null && tb.IsEpgLoaded == true)
-                    {
-                        return tb.view.IsEnabledJumpTab(trg);
-                    }
-                    return ret;
-                });
+
+                //表示されてるものがなければキーを持っているタブを当たる
+                var tab = Tabs.OrderBy(tb => !tb.IsSelected).FirstOrDefault(tb => tb.view != null && tb.IsEpgLoaded && tb.view.IsEnabledJumpTab(trg))
+                        ?? Tabs.OrderBy(tb => !tb.IsSelected).FirstOrDefault(tb => tb.HasKey(data.Create64Key()));
+
                 if (tab != null && dryrun == false) tab.IsSelected = true;
                 return tab != null;
             }
             catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
             return false;
+        }
+
+        /// <summary>表示番組表のデータ情報を全て取得する</summary>
+        public List<EpgViewData> GetAllEpgEventList()
+        {
+            return Tabs.Select(tb => tb.viewData).ToList();
         }
 
         //表示切り替えタブ関係
@@ -413,10 +419,10 @@ namespace EpgTimer
                 switch (menu.Tag as edvCmds?)
                 {
                     case edvCmds.Setting:
-                        ViewUtil.MainWindow.OpenSettingDialog(SettingWindow.SettingMode.EpgSetting);
+                        CommonManager.MainWindow.OpenSettingDialog(SettingWindow.SettingMode.EpgSetting);
                         return;
                     case edvCmds.TabSetting:
-                        ViewUtil.MainWindow.OpenSettingDialog(SettingWindow.SettingMode.EpgTabSetting, menu.Uid);
+                        CommonManager.MainWindow.OpenSettingDialog(SettingWindow.SettingMode.EpgTabSetting, menu.Uid);
                         return;
                     case edvCmds.ResetAll:
                         this.UpdateSetting(true);
@@ -493,18 +499,29 @@ namespace EpgTimer
             catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
         }
 
+        //過去番組表示パネルの状態保持
+        bool isJumpPanelOpened = false;
+
         //EpgTabItemを内部クラスにしづらいので、データ部分だけ仮にまとめる
         public class EpgDataViewInfo
         {
-            public EpgDataViewInfo(EpgDataView epgview) { epgView = epgview ?? new EpgDataView(); }
-            EpgDataView epgView = null;
-            public bool IsSelected { get { return epgView.IsSelected; } }
-            public Grid grid { get { return epgView.grid_tab; } }
-            public bool OnCreateTab { get { return epgView.OnCreateTab; } }
-            public CustomEpgTabInfo TabInfo(string Uid) { return epgView.get_tabInfo(Uid); }
-            public Action<int> viewSettingClick { get { return epgView.epgView_ViewSettingClick; } }
-            public void TabItemsChanged() { ViewUtil.TabControlHeaderCopy(epgView.tabControl, epgView.dummyTab); }
+            EpgDataView v;
+            public EpgDataViewInfo(EpgDataView epgview) { v = epgview; }
+            public bool IsSelected { get { return v.IsSelected; } }
+            public Grid grid { get { return v.grid_tab; } }
+            public bool OnCreateTab { get { return v.OnCreateTab; } }
+            public CustomEpgTabInfo TabInfo(string Uid) { return v.get_tabInfo(Uid); }
+            public void TabItemsChanged() { ViewUtil.TabControlHeaderCopy(v.tabControl, v.dummyTab); }
         }
+        public class EpgDataViewInterface
+        {
+            EpgDataView v;
+            public EpgDataViewInterface(EpgDataView epgview) { v = epgview; }
+            public void ViewSetting(int param) { v.epgView_ViewSettingClick(param); }
+            public bool IsJumpPanelOpened { get { return v.isJumpPanelOpened; } set { v.isJumpPanelOpened = value; } }
+        }
+        public EpgDataViewInfo viewInfo;
+        public EpgDataViewInterface viewInterface;
     }
 
     //TabItemとして振る舞うが、実際の表示は別途用意したGridを使用する
@@ -512,8 +529,9 @@ namespace EpgTimer
     {
         //共有データ。
         EpgDataView.EpgDataViewInfo epgView;
-        EpgViewData viewData = new EpgViewData();
+        public EpgViewData viewData = new EpgViewData();
         public bool IsEpgLoaded { get { return viewData.IsEpgLoaded; } }
+        public bool HasKey(UInt64 key) { return viewData.HasKey(key); }
         public CustomEpgTabInfo Info
         {
             get { return viewData.EpgTabInfo; }
@@ -538,9 +556,9 @@ namespace EpgTimer
         public EpgTabItem(CustomEpgTabInfo setInfo, EpgDataView epgview, string selectID = null, EpgViewState state = null)
         {
             //この番組表の表示エリアを登録
-            epgView = new EpgDataView.EpgDataViewInfo(epgview);
+            epgView = epgview.viewInfo;
             epgView.grid.Children.Add(grid);
-            viewData.ViewSettingClick += epgView.viewSettingClick;
+            viewData.viewFunc = epgview.viewInterface;
 
             //番組情報を登録
             Info = setInfo;
@@ -665,5 +683,63 @@ namespace EpgTimer
 
             base.OnVisualParentChanged(oldParent);
         }
+    }
+
+    public class EpgViewPeriodDef
+    {
+        private EpgSetting EpgStyle;
+        public EpgViewPeriodDef(EpgSetting epgStyle) { EpgStyle = epgStyle; }
+
+        //番組表の初期状態
+        public EpgViewPeriod DefPeriod { get { return new EpgViewPeriod(InitStart, CommonUtil.EdcbNow.Date.AddDays(8)); } }
+        public DateTime InitStart { get { return CommonUtil.EdcbNow.Date.AddDays(-EpgStyle.EpgArcDefaultDays); } }
+        public double InitDays { get { return 7 * EpgStyle.EpgArcTabWeeks; } }
+        public double InitMoveDays { get { return ToMoveDays(InitDays); } }
+        public static double ToMoveDays(double days) { return days < 7 ? 7 : days - days % 7; }//Floorは使わない
+    }
+    public class EpgViewPeriod : IDeepCloneObj
+    {
+        public DateTime Start { get; set; }
+        public DateTime StartLoad { get { return Start.AddDays(StrictLoad ? 0 : -1); } }
+        public DateTime End
+        {
+            get
+            {
+                DateTime ret;
+                try { ret = Start.AddDays(Days); }
+                catch { ret = Days >= 0 ? DateTime.MaxValue : DateTime.MinValue; };
+                return ret;
+            }
+            set { Days = (value - Start).TotalDays; }
+        }
+        public bool StrictLoad { get; set; }
+        public double Days { get; set; }
+        public double MoveDays { get { return EpgViewPeriodDef.ToMoveDays(Days); } }
+
+        public EpgViewPeriod() { }
+        public EpgViewPeriod(DateTime start, DateTime end) { Start = start.Date; End = end; }
+        public EpgViewPeriod(DateTime start, double period) { Start = start.Date; Days = period; }
+        public EpgViewPeriod(EpgViewPeriod data) { Start = data.Start.Date; Days = data.Days; }
+        public bool Contains(DateTime time) { return Start <= time && time < End; }
+
+        public string ConvertText(DateTime endTime)
+        {
+            var start = Start.ToString("yyyy\\/MM\\/dd(ddd)");
+            var end = End >= endTime ? "以降全て" : End.AddSeconds(-1).ToString("～MM\\/dd(ddd)");
+            return string.Format("{0}{1}", start, end);
+        }
+
+        public override bool Equals(object obj)
+        {
+            var val = obj as EpgViewPeriod;
+            if (val == null) return false;
+            return val != null && val.Start == Start && val.Days == Days;
+        }
+        public override int GetHashCode()
+        {
+            return Start.GetHashCode() ^ Days.GetHashCode();
+        }
+
+        public object DeepCloneObj() { return MemberwiseClone(); }
     }
 }

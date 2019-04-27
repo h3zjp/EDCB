@@ -38,6 +38,31 @@ namespace EpgTimer
             }
         }
 
+        public EpgEventInfo GetPgInfo(bool isSrv = true)
+        {
+            //まずは手持ちのデータを探す
+            EpgEventInfo pg = MenuUtil.GetPgInfoUidAll(CurrentPgUID());
+            if (pg != null || isSrv == false) return pg;
+
+            //過去番組情報を探してみる
+            if (PgStartTime >= CommonManager.Instance.DB.EventTimeMinArc)
+            {
+                var arcList = new List<EpgServiceEventInfo>();
+                CommonManager.Instance.DB.LoadEpgArcData(PgStartTime, PgStartTime.AddSeconds(1), ref arcList, Create64Key().IntoList());
+                if (arcList.Any()) return arcList[0].eventList.FirstOrDefault();
+            }
+
+            //現在番組情報も探してみる ※EPGデータ未読み込み時で、録画直後の場合
+            if (CommonManager.Instance.DB.IsEpgLoaded == false)
+            {
+                var list = new List<EpgEventInfo>();
+                try { CommonManager.CreateSrvCtrl().SendGetPgInfoList(Create64PgKey().IntoList(), ref list); } catch { }
+                return list.FirstOrDefault();
+            }
+
+            return null;
+        }
+
         public override List<EpgAutoAddData> SearchEpgAutoAddList(bool? IsEnabled = null, bool ByFazy = false)
         {
             //EpgTimerSrv側のSearch()をEpgTimerで実装してないので、簡易な推定によるもの
@@ -50,16 +75,10 @@ namespace EpgTimer
                 .FindAll(data => data.GetReserveList().FirstOrDefault(data2 => data2.Create64Key() == this.Create64Key()) != null);
         }
 
-        public EpgEventInfo SearchEventInfo()
-        {
-            //それらしいものを選んでみる
-            return MenuUtil.SearchEventInfoLikeThat(this, true);
-        }
-
         //AppendData 関係。ID(元データ)に対して一意の情報なので、データ自体はDB側。
         private RecFileInfoAppend Append1 { get { return CommonManager.Instance.DB.GetRecFileAppend(this, false); } }
         private RecFileInfoAppend Append2 { get { return CommonManager.Instance.DB.GetRecFileAppend(this, true); } }
-        public string ProgramInfo       { get { return Append1.ProgramInfo; } }
+        public string ProgramInfo       { get { return Append1.ProgramInfo; } set { Append1.ProgramInfo = value; } }
         public string ErrInfo           { get { return Append1.ErrInfo; } }
         public bool HasErrPackets       { get { return this.Drops != 0 || this.Scrambles != 0; } }
         public long DropsCritical       { get { return this.Drops == 0 ? 0 : Append2.DropsCritical; } }
@@ -72,10 +91,6 @@ namespace EpgTimer
         {
             return itemlist.Where(item => item == null ? false : item.ProtectFlag == 0).ToList();
         }
-        //public static bool HasProtected(this IEnumerable<RecInfoItem> list)
-        //{
-        //    return list.Any(info => info == null ? false : info.RecInfo.ProtectFlag == true);
-        //}
         public static bool HasNoProtected(this IEnumerable<RecFileInfo> list)
         {
             return list.Any(info => info == null ? false : info.ProtectFlag == 0);
@@ -84,8 +99,8 @@ namespace EpgTimer
 
     public class RecFileInfoAppend
     {
-        public bool IsValid { get { return ProgramInfo != null; } }
-        public string ProgramInfo { get; protected set; }
+        public bool IsValid { get { return ErrInfo != null; } }
+        public string ProgramInfo { get; set; }
 
         private string errInfo = null;
         public string ErrInfo { get { UpdateInfo(); return errInfo; } }
@@ -103,7 +118,10 @@ namespace EpgTimer
         {
             if (isValid == true)
             {
-                ProgramInfo = info._ProgramInfo;
+                if (info.EventID == 0xFFFF || string.IsNullOrEmpty(info._ProgramInfo) == false)
+                {
+                    ProgramInfo = info._ProgramInfo;
+                }
                 errInfo = info._ErrInfo;
             }
             drops = info.Drops;

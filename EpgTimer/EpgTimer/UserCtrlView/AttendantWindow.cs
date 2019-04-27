@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,7 +10,7 @@ namespace EpgTimer
     //Pinの相手はメインウィンドウ限定
     public class AttendantWindow : Window
     {
-        protected static MainWindow mainWindow { get { return ViewUtil.MainWindow; } }
+        protected static MainWindow mainWindow { get { return CommonManager.MainWindow; } }
         protected bool XMLSaveOnClose = false;
 
         protected virtual void WriteWindowSaveData()
@@ -101,16 +102,19 @@ namespace EpgTimer
             }
             AllClosing = false;
         }
+        //フォーカス関係はOnClosed()でないと意図通り動かないが、RestoreBounds()はOnClosingでないと取れない。
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            WriteWindowSaveData();
+            base.OnClosing(e);
+        }
         protected override void OnClosed(EventArgs e)
         {
             //フォーカスがおかしくなるときがあるので、とりあえずの対応
             if (Application.Current.Windows.OfType<AttendantWindow>().Any() != true)
             {
-                mainWindow.Activate();
+                if (mainWindow.IsLoaded) mainWindow.Activate();
             }
-
-            WriteWindowSaveData();
-
             if (AllClosing == false)
             {
                 if (XMLSaveOnClose == true)
@@ -193,9 +197,9 @@ namespace EpgTimer
         {
             if (DataView != null && DataView.IsVisible == true) DataView.MoveToItem(DataID);
         }
-        protected virtual void MoveViewNextItem(int direction)
+        protected virtual void MoveViewNextItem(int direction, bool toRefData = false)
         {
-            object NewData = DataView == null || DataView.IsVisible == false ? null : DataView.MoveNextItem(direction, DataID, true, JumpItemStyle.None);
+            object NewData = toRefData || DataView == null || DataView.IsVisible == false ? null : DataView.MoveNextItem(direction, DataID, true, JumpItemStyle.None);
             if (NewData == null)
             {
                 IEnumerable<KeyValuePair<UInt64, object>> idList = DataRefList;

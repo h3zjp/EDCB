@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
 namespace EpgTimer.EpgView
@@ -9,12 +11,11 @@ namespace EpgTimer.EpgView
     /// <summary>
     /// WeekDayView.xaml の相互作用ロジック
     /// </summary>
-    public partial class WeekDayView : UserControl
+    public partial class WeekDayView : UserControl, IEpgSettingAccess, IEpgViewDataSet
     {
         public WeekDayView()
         {
             InitializeComponent();
-            this.Background = CommonManager.Instance.EpgWeekdayBorderColor;
         }
 
         public void ClearInfo()
@@ -22,15 +23,22 @@ namespace EpgTimer.EpgView
             stackPanel_day.Children.Clear();
         }
 
+        public int EpgSettingIndex { get; private set; }
+        public void SetViewData(EpgViewData data)
+        {
+            EpgSettingIndex = data.EpgSettingIndex;
+            Background = this.EpgBrushCache().WeekdayBorderColor;
+        }
+
         public void SetDay(List<DateTime> dayList)
         {
-            try
             {
                 stackPanel_day.Children.Clear();
                 foreach (DateTime time in dayList)
                 {
-                    var item = ViewUtil.GetPanelTextBlock(time.ToString("M/d\r\n(ddd)"));
-                    item.Width = Settings.Instance.ServiceWidth - 1;
+                    TextBlock item = ViewUtil.GetPanelTextBlock(time.ToString("M\\/d\r\n(ddd)"));
+                    item.Tag = time;
+                    item.Width = this.EpgStyle().ServiceWidth - 1;
 
                     Color backgroundColor;
                     if (time.DayOfWeek == DayOfWeek.Saturday)
@@ -48,15 +56,32 @@ namespace EpgTimer.EpgView
                         item.Foreground = Brushes.Black;
                         backgroundColor = Colors.White;
                     }
-                    item.Background = Settings.Instance.EpgGradationHeader ? (Brush)ColorDef.GradientBrush(backgroundColor, 0.8, 1.2) : new SolidColorBrush(backgroundColor);
-
                     item.Padding = new Thickness(0, 0, 0, 2);
-                    item.Margin = new Thickness(0, 1, 1, 1);
+                    item.VerticalAlignment = VerticalAlignment.Center;
                     item.FontWeight = FontWeights.Bold;
-                    stackPanel_day.Children.Add(item);
+
+                    var grid = new UniformGrid();
+                    grid.Background = this.EpgStyle().EpgGradationHeader ? (Brush)ColorDef.GradientBrush(backgroundColor, 0.8, 1.2) : new SolidColorBrush(backgroundColor);
+                    grid.Background.Freeze();
+                    grid.Margin = new Thickness(0, 1, 1, 1);
+                    grid.Tag = time;
+                    grid.Children.Add(item);
+                    stackPanel_day.Children.Add(grid);
                 }
+                rect_day.Width = this.EpgStyle().ServiceWidth - 1;
+                SetTodayMark();
             }
-            catch (Exception ex) { MessageBox.Show(ex.Message + "\r\n" + ex.StackTrace); }
+        }
+        public void SetTodayMark()
+        {
+            var date = CommonUtil.EdcbNow.Date;
+            var grid = stackPanel_day.Children.OfType<UniformGrid>().FirstOrDefault(grd => (DateTime)grd.Tag == date);
+            rect_day.Visibility = grid == null ? Visibility.Collapsed : Visibility.Visible;
+            if (grid != null)
+            {
+                rect_day.Stroke = ((TextBlock)grid.Children[0]).Foreground;
+                rect_day.Margin = new Thickness { Left = 1 + this.EpgStyle().ServiceWidth * stackPanel_day.Children.IndexOf(grid) };
+            }
         }
     }
 }

@@ -7,77 +7,39 @@ namespace EpgTimer
     {
         public ReserveViewItem(ReserveData info) : base(info) { }
 
-        public override Brush BackColor
+        public override Brush BackColor { get { return this.EpgBrushCache().ResFillColorList[BrushIdx()]; } }
+        public override Brush BorderBrush { get { return this.EpgBrushCache().ResColorList[BrushIdx()]; } }
+        protected virtual int BrushIdx()
         {
-            get
+            if (Data is ReserveDataEnd)
             {
-                if (Data.IsEnabled == false)
-                {
-                    return CommonManager.Instance.CustEpgResFillColorList[2];
-                }
-                if (Data.OverlapMode == 2)
-                {
-                    return CommonManager.Instance.CustEpgResFillColorList[3];
-                }
-                if (Settings.Instance.EpgChangeBorderOnRec == true && Data.IsOnRec() == true)
-                {
-                    return CommonManager.Instance.CustEpgResFillColorList[Data.IsWatchMode ? 8 : 7];
-                }
-                if (Data.OverlapMode == 1)
-                {
-                    return CommonManager.Instance.CustEpgResFillColorList[4];
-                }
-                if (Data.IsAutoAddInvalid == true)
-                {
-                    return CommonManager.Instance.CustEpgResFillColorList[5];
-                }
-                if (Data.IsMultiple == true)
-                {
-                    return CommonManager.Instance.CustEpgResFillColorList[6];
-                }
-                if (Settings.Instance.EpgChangeBorderWatch == false && Data.IsManual == true ||
-                        Settings.Instance.EpgChangeBorderWatch == true && Data.IsWatchMode == true)
-                {
-                    return CommonManager.Instance.CustEpgResFillColorList[1];
-                }
-                return CommonManager.Instance.CustEpgResFillColorList[0];
+                return 9;
             }
-        }
-        public override Brush BorderBrush
-        {
-            get
+            if (Data.IsEnabled == false)
             {
-                if (Data.IsEnabled == false)
-                {
-                    return CommonManager.Instance.CustEpgResColorList[2];
-                }
-                if (Data.OverlapMode == 2)
-                {
-                    return CommonManager.Instance.CustEpgResColorList[3];
-                }
-                if (Settings.Instance.EpgChangeBorderOnRec == true && Data.IsOnRec() == true)
-                {
-                    return CommonManager.Instance.CustEpgResColorList[Data.IsWatchMode ? 8 : 7];
-                }
-                if (Data.OverlapMode == 1)
-                {
-                    return CommonManager.Instance.CustEpgResColorList[4];
-                }
-                if (Data.IsAutoAddInvalid == true)
-                {
-                    return CommonManager.Instance.CustEpgResColorList[5];
-                }
-                if (Data.IsMultiple == true)
-                {
-                    return CommonManager.Instance.CustEpgResColorList[6];
-                }
-                if (Settings.Instance.EpgChangeBorderWatch == false && Data.IsManual == true ||
-                        Settings.Instance.EpgChangeBorderWatch == true && Data.IsWatchMode == true)
-                {
-                    return CommonManager.Instance.CustEpgResColorList[1];
-                }
-                return CommonManager.Instance.CustEpgResColorList[0];
+                return 2;
             }
+            if (Data.OverlapMode == 2)
+            {
+                return 3;
+            }
+            if ((ViewMode == 1 || this.EpgStyle().EpgChangeBorderOnRecWeekOnly == false) && Data.IsOnRec())
+            {
+                return Data.IsManual ? 8 : 7;
+            }
+            if (Data.OverlapMode == 1)
+            {
+                return 4;
+            }
+            if (Data.IsAutoAddInvalid)
+            {
+                return 5;
+            }
+            if (Data.IsMultiple)
+            {
+                return 6;
+            }
+            return Data.IsManual ? 1 : 0;
         }
     }
 
@@ -86,35 +48,24 @@ namespace EpgTimer
         public TunerReserveViewItem(ReserveData info) : base(info) { }
 
         public override Brush BackColor { get { return ViewUtil.ReserveErrBrush(Data); } }
-        public override Brush BorderBrush
+        public override Brush BorderBrush { get { return Settings.BrushCache.TunerResBorderColor[BrushIdx()]; } }
+        protected override int BrushIdx()
         {
-            get
+            if (Data.IsOnRec())
             {
-                if (Data.IsOnRec() == true)
-                {
-                    return CommonManager.Instance.TunerResBorderColor[Data.IsWatchMode ? 4 : 3];
-                }
-                if (Data.IsEnabled == false)
-                {
-                    return CommonManager.Instance.TunerResBorderColor[2];
-                }
-                if (Settings.Instance.TunerChangeBorderWatch == false && Data.IsManual == true ||
-                        Settings.Instance.TunerChangeBorderWatch == true && Data.IsWatchMode == true)
-                {
-                    return CommonManager.Instance.TunerResBorderColor[1];
-                }
-                return CommonManager.Instance.TunerResBorderColor[0];
+                return Data.IsManual ? 4 : 3;
             }
+            if (Data.IsEnabled == false)
+            {
+                return 2;
+            }
+            return Data.IsManual ? 1 : 0;
         }
         public Brush ServiceColor
         {
             get
             {
-                if (Settings.Instance.TunerColorModeUse == true)
-                {
-                    return CommonManager.Instance.CustTunerServiceColorPri[Data.RecSetting.Priority - 1];
-                }
-                return CommonManager.Instance.CustTunerServiceColor;
+                return Settings.BrushCache.CustTunerServiceColor[Settings.Instance.TunerColorModeUse ? Data.RecSetting.Priority : 0];
             }
         }
         public string Status

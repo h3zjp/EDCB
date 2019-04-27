@@ -848,9 +848,6 @@ namespace EpgTimer
         /// <summary>ノンスクランブルフラグ</summary>
         public byte FreeCAFlag;
 
-        /// <summary>EpgTimer内のみ有効/過去番組情報</summary>
-        public bool PastDataFlag;
-
         public EpgEventInfo()
         {
             original_network_id = 0;
@@ -869,7 +866,6 @@ namespace EpgTimer
             EventGroupInfo = null;
             EventRelayInfo = null;
             FreeCAFlag = 0;
-            PastDataFlag = false;
         }
         public void Write(MemoryStream s, ushort version)
         {
@@ -985,13 +981,66 @@ namespace EpgTimer
         }
     }
 
-    public class EpgServiceInfo : ICtrlCmdReadWrite
+    public class EpgEventInfoMinimum : ICtrlCmdReadWrite
+    {
+        public ushort original_network_id;
+        public ushort transport_stream_id;
+        public ushort service_id;
+        public ushort event_id;
+        public EpgEventInfoMinimum()
+        {
+            original_network_id = 0;
+            transport_stream_id = 0;
+            service_id = 0;
+            event_id = 0;
+        }
+        public void Write(MemoryStream s, ushort version)
+        {
+            var w = new CtrlCmdWriter(s, version);
+            w.Begin();
+            w.Write(original_network_id);
+            w.Write(transport_stream_id);
+            w.Write(service_id);
+            w.Write(event_id);
+            w.Write((byte)0);
+            w.Write(new DateTime());
+            w.Write((byte)0);
+            w.Write((uint)0);
+            for (int i = 0; i < 7; i++)
+            {
+                w.Write(4);
+            }
+            w.Write((byte)0);
+            w.End();
+        }
+        public void Read(MemoryStream s, ushort version)
+        {
+            var r = new CtrlCmdReader(s, version);
+            r.Begin();
+            r.Read(ref original_network_id);
+            r.Read(ref transport_stream_id);
+            r.Read(ref service_id);
+            r.Read(ref event_id);
+            r.Stream.Seek(1 + 16 + 1 + 4, SeekOrigin.Current);
+            for (int i = 0; i < 7; i++)
+            {
+                int size = 0;
+                r.Read(ref size);
+                r.Stream.Seek(Math.Max(size - 4, 0), SeekOrigin.Current);
+            }
+            byte ignoreByte = 0;
+            r.Read(ref ignoreByte);
+            r.End();
+        }
+    }
+
+    public partial class EpgServiceInfo : ICtrlCmdReadWrite
     {
         public ushort ONID;
         public ushort TSID;
         public ushort SID;
         public byte service_type;
-        public byte partialReceptionFlag;
+        private byte partialReceptionFlag;
         public string service_provider_name;
         public string service_name;
         public string network_name;
@@ -1282,6 +1331,37 @@ namespace EpgTimer
             other.videoList = videoList.ToList();
             other.audioList = audioList.ToList();
             return other;
+        }
+    }
+
+    public class SearchPgParam : ICtrlCmdReadWrite
+    {
+        public List<EpgSearchKeyInfo> keyList;
+        public long enumStart;
+        public long enumEnd;
+        public SearchPgParam()
+        {
+            keyList = new List<EpgSearchKeyInfo>();
+            enumStart = 0;
+            enumEnd = 0;
+        }
+        public void Write(MemoryStream s, ushort version)
+        {
+            var w = new CtrlCmdWriter(s, version);
+            w.Begin();
+            w.Write(keyList);
+            w.Write(enumStart);
+            w.Write(enumEnd);
+            w.End();
+        }
+        public void Read(MemoryStream s, ushort version)
+        {
+            var r = new CtrlCmdReader(s, version);
+            r.Begin();
+            r.Read(ref keyList);
+            r.Read(ref enumStart);
+            r.Read(ref enumEnd);
+            r.End();
         }
     }
 
