@@ -233,11 +233,6 @@ namespace EpgTimer
             epgEventInfo0 = null;
             if (event_id0 == ushort.MaxValue) { return false; } // プログラム予約
             bool isBroadCastCancelled1 = false;
-            for (int i1 = 0; i1 < 10; i1++)
-            {
-                if (!CommonManager.Instance.DB.isEpgDataLoading) { break; }
-                System.Threading.Thread.Sleep(500);
-            }
             UInt64 key1 = CommonManager.Create64Key(original_network_id0, transport_stream_id0, service_id0);
             if (CommonManager.Instance.DB.ServiceEventList.ContainsKey(key1) == true)
             {

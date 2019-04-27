@@ -93,9 +93,9 @@ namespace EpgTimer.DefineClass
 
             FlowDocument flowDoc1 = new FlowDocument()
             {
-                FontFamily = new FontFamily(Settings.Instance.FontName),
-                FontSize = 10.5,
-                Foreground = new SolidColorBrush(Color.FromRgb(10, 10, 100))
+                FontFamily = new FontFamily("メイリオ"),
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(10, 10, 100)),
             };
             Paragraph p_basicInfo1 = new Paragraph();
             List<Paragraph> extInfo1 = new List<Paragraph>();
@@ -104,7 +104,7 @@ namespace EpgTimer.DefineClass
             UInt64 key = eventInfo.Create64Key();
             if (ChSet5.ChList.ContainsKey(key) == true)
             {
-                serviceName1 = ChSet5.ChList[key].ServiceName + "(" + ChSet5.ChList[key].NetworkName + ")";
+                serviceName1 = ChSet5.ChList[key].service_name + "(" + ChSet5.ChList[key].network_name + ")";
             }
 
             string date1 = null;
@@ -262,7 +262,7 @@ namespace EpgTimer.DefineClass
                         key = info.Create64Key();
                         if (ChSet5.ChList.ContainsKey(key) == true)
                         {
-                            contentInfo1 += ChSet5.ChList[key].ServiceName + "(" + ChSet5.ChList[key].NetworkName + ")" + " ";
+                            contentInfo1 += ChSet5.ChList[key].service_name + "(" + ChSet5.ChList[key].network_name + ")" + " ";
                         }
                         else
                         {
@@ -488,22 +488,19 @@ namespace EpgTimer.DefineClass
         /// <summary>
         /// 
         /// </summary>
-        public long ID
-        {
+        public long ID {
             get { return _ID; }
             set { _ID = value; }
         }
         long _ID = -1;
 
-        public long searchLogItemID
-        {
+        public long searchLogItemID {
             get { return this._searchLogItemID; }
             set { this._searchLogItemID = value; }
         }
         long _searchLogItemID = -1;
 
-        public long epgEventInfoID
-        {
+        public long epgEventInfoID {
             get { return this._epgEventInfoID; }
             set { this._epgEventInfoID = value; }
         }
@@ -512,8 +509,7 @@ namespace EpgTimer.DefineClass
         /// <summary>
         /// 
         /// </summary>
-        public EpgEventInfoR epgEventInfoR
-        {
+        public EpgEventInfoR epgEventInfoR {
             get { return this._epgEventInfoR; }
             set { this._epgEventInfoR = value; }
         }
@@ -522,11 +518,9 @@ namespace EpgTimer.DefineClass
         /// <summary>
         /// 
         /// </summary>
-        public RecLogItem.RecodeStatuses recodeStatus
-        {
+        public RecLogItem.RecodeStatuses recodeStatus {
             get { return this._recodeStatus; }
-            set
-            {
+            set {
                 this._recodeStatus = value;
                 setStatusProperty(value);
             }
@@ -541,11 +535,9 @@ namespace EpgTimer.DefineClass
         /// <summary>
         ///  ListViewItem Property
         /// </summary>
-        public string status
-        {
+        public string status {
             get { return this._status; }
-            set
-            {
+            set {
                 if (this._status != value)
                 {
                     this._status = value;
@@ -558,10 +550,8 @@ namespace EpgTimer.DefineClass
         /// <summary>
         ///  ListViewItem Property
         /// </summary>
-        public Brush statusColor
-        {
-            get
-            {
+        public Brush statusColor {
+            get {
                 if (epgEventInfoR.IsOnAir() == true)
                 {
                     if (recodeStatus != RecLogItem.RecodeStatuses.NONE)
@@ -578,8 +568,7 @@ namespace EpgTimer.DefineClass
                     return _statusColor;
                 }
             }
-            set
-            {
+            set {
                 if (_statusColor != value)
                 {
                     _statusColor = value;
@@ -592,11 +581,9 @@ namespace EpgTimer.DefineClass
         /// <summary>
         ///  ListViewItem Property
         /// </summary>
-        public bool confirmed
-        {
+        public bool confirmed {
             get { return this._confirmed; }
-            set
-            {
+            set {
                 if (this._confirmed != value)
                 {
                     this._confirmed = value;
@@ -609,11 +596,9 @@ namespace EpgTimer.DefineClass
         /// <summary>
         /// ListViewへの表示または非表示を指示
         /// </summary>
-        public bool isVisible
-        {
+        public bool isVisible {
             get { return this._isVisible; }
-            set
-            {
+            set {
                 if (this._isVisible != value)
                 {
                     this._isVisible = value;
@@ -626,34 +611,29 @@ namespace EpgTimer.DefineClass
         /// <summary>
         /// ListViewItem Sort Property
         /// </summary>
-        public DateTime date
-        {
+        public DateTime date {
             get { return epgEventInfoR.start_time; }
         }
 
         /// <summary>
         /// ListViewItem Property
         /// </summary>
-        public string dateStr
-        {
+        public string dateStr {
             get { return epgEventInfoR.start_time.ToString("MM/dd(ddd) HH:mm"); }
         }
 
         /// <summary>
         /// ListViewItem Property
         /// </summary>
-        public string timeLength
-        {
+        public string timeLength {
             get { return TimeSpan.FromSeconds(epgEventInfoR.durationSec).ToString("hh\\:mm"); }
         }
 
         /// <summary>
         ///  ListViewItem Property
         /// </summary>
-        public string tvProgramTitle
-        {
-            get
-            {
+        public string tvProgramTitle {
+            get {
                 if (epgEventInfoR != null && epgEventInfoR.ShortInfo != null)
                 {
                     return epgEventInfoR.ShortInfo.event_name;
@@ -668,10 +648,8 @@ namespace EpgTimer.DefineClass
         /// <summary>
         ///  ListViewItem Property
         /// </summary>
-        public string networkName
-        {
-            get
-            {
+        public string networkName {
+            get {
                 if (string.IsNullOrEmpty(_networkName))
                 {
                     _networkName = CommonManager.ConvertNetworkNameText(epgEventInfoR.original_network_id);
@@ -684,14 +662,12 @@ namespace EpgTimer.DefineClass
         /// <summary>
         ///  ListViewItem Property
         /// </summary>
-        public string serviceName
-        {
-            get
-            {
+        public string serviceName {
+            get {
                 if (string.IsNullOrEmpty(_serviceName))
                 {
                     ulong key1 = CommonManager.Create64Key(epgEventInfoR.original_network_id, epgEventInfoR.transport_stream_id, epgEventInfoR.service_id);
-                    _serviceName = ChSet5.ChList[key1].ServiceName;
+                    _serviceName = ChSet5.ChList[key1].service_name;
                 }
                 return this._serviceName;
             }
@@ -701,10 +677,8 @@ namespace EpgTimer.DefineClass
         /// <summary>
         ///  ListViewItem Property
         /// </summary>
-        public string programContent
-        {
-            get
-            {
+        public string programContent {
+            get {
                 if (string.IsNullOrEmpty(_programContent)
                     && epgEventInfoR.ShortInfo != null)
                 {
@@ -718,10 +692,8 @@ namespace EpgTimer.DefineClass
         /// <summary>
         ///  ListViewItem Property
         /// </summary>
-        public string jyanruKey
-        {
-            get
-            {
+        public string jyanruKey {
+            get {
                 if (string.IsNullOrEmpty(_jyanruKey)
                     && epgEventInfoR != null)
                 {
@@ -736,10 +708,8 @@ namespace EpgTimer.DefineClass
         /// <summary>
         ///  ListViewItem Property
         /// </summary>
-        public Brush borderBrush
-        {
-            get
-            {
+        public Brush borderBrush {
+            get {
                 if (epgEventInfoR == null || epgEventInfoR.ContentInfo == null)
                 {
                     return Brushes.White;
@@ -755,11 +725,9 @@ namespace EpgTimer.DefineClass
         /// <summary>
         ///  ListViewItem Property
         /// </summary> 
-        public Brush background
-        {
+        public Brush background {
             get { return this._background; }
-            set
-            {
+            set {
                 if (this._background != value)
                 {
                     this._background = value;
@@ -772,16 +740,14 @@ namespace EpgTimer.DefineClass
         /// <summary>
         /// ListViewItem Property
         /// </summary>
-        public string imageQuality
-        {
+        public string imageQuality {
             get { return this.epgEventInfoR.imageQuality; }
         }
 
         /// <summary>
         /// ListViewItem Property
         /// </summary>
-        public Brush foreground_ImageQuality
-        {
+        public Brush foreground_ImageQuality {
             get { return this.epgEventInfoR.foreground_ImageQuality; }
         }
 

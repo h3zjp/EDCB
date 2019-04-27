@@ -85,11 +85,19 @@ namespace EpgTimer
             }
         }
 
-        public void update(UpdateNotifyItem notifyItem0)
+        public void update_EpgData()
         {
             foreach (var item1 in _searchLogTabs)
             {
-                item1.update(notifyItem0);
+                item1.update_EpgData();
+            }
+        }
+
+        public void update_ReserveInfo()
+        {
+            foreach (var item1 in _searchLogTabs)
+            {
+                item1.update_ReserveInfo();
             }
         }
 
@@ -284,10 +292,11 @@ namespace EpgTimer
         {
             TabItem tab1 = sender as TabItem;
             if (tab1 == _tabItem_Add) { return; }
-            if (e.LeftButton == MouseButtonState.Pressed) 
+            if (e.LeftButton == MouseButtonState.Pressed)
             {
                 _tab_Dragging = tab1;
-            } else if (e.RightButton == MouseButtonState.Pressed) 
+            }
+            else if (e.RightButton == MouseButtonState.Pressed)
             {
                 tabControl.SelectedItem = tab1;
             }

@@ -79,7 +79,6 @@ namespace EpgTimer
         public List<String> WritePlugInList { get; private set; }
         public Dictionary<UInt32, ManualAutoAddData> ManualAutoAddList { get; private set; }
         public Dictionary<UInt32, EpgAutoAddData> EpgAutoAddList { get; private set; }
-        public bool isEpgDataLoading { get; private set; }
 
         public AutoAddDataAppend GetManualAutoAddDataAppend(ManualAutoAddData master)
         {
@@ -484,7 +483,6 @@ namespace EpgTimer
         {
             return ReloadWork(UpdateNotifyItem.EpgData, immediately, noRaiseChanged, ret =>
             {
-                isEpgDataLoading = true;
                 ServiceEventList = new Dictionary<ulong, EpgServiceAllEventInfo>();
                 EventUIDList = new Dictionary<ulong, EpgEventInfo>();
                 EventTimeBaseArc = DateTime.MaxValue;

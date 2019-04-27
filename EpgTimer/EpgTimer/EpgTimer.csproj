@@ -94,7 +94,6 @@
     <Compile Include="DefineClass\InfoSearchSetting.cs" />
     <Compile Include="DefineClass\NotifyPropertyChangedItem.cs" />
     <Compile Include="DefineClass\PicUpTitle.cs" />
-    <Compile Include="DefineClass\ServiceItem.cs" />
     <Compile Include="Menu\CmdExeSearch.cs" />
     <Compile Include="UserCtrlView\BlackoutWindow.xaml.cs">
       <DependentUpon>BlackoutWindow.xaml</DependentUpon>

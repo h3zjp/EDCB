@@ -16,9 +16,9 @@ namespace EpgTimer.DefineClass
     public class SearchLogItem : NotifyPropertyChangedItem, IDBRecord
     {
 
+        static readonly Regex rgxMark = new Regex(@"～|＃| #|\[|\]\（|\）|\(|\)|＜|＞|【|】|「|」");
         Regex _regex_NotWordItem = null;
         Regex _regex_NotWordItem_TitleOnly = null;
-        Regex _rgxMark = new Regex(@"～|＃| #|\[|\]\（|\）|\(|\)|＜|＞|【|】|「|」");
         List<ContentKindInfo> _filter_contentKindInfo = new List<ContentKindInfo>();
         bool _isNotWordItemChanged = false;
         List<SearchLogNotWordItem> _notWordItems = new List<SearchLogNotWordItem>();
@@ -162,7 +162,7 @@ namespace EpgTimer.DefineClass
                         foreach (var w1 in Regex.Split(item1.word, "\\s+"))
                         {
                             sb3.Append("(?=.*" + Regex.Escape(w1));
-                            if (item1.isTitleOnly && !_rgxMark.IsMatch(w1)) // 「」がある(tirmKeywordされていない)ものは対象外。(e.g.「丘みどり、わらふぢなるお、笑福亭松喬」)
+                            if (item1.isTitleOnly && !rgxMark.IsMatch(w1)) // 「」がある(tirmKeywordされていない)ものは対象外。(e.g.「丘みどり、わらふぢなるお、笑福亭松喬」)
                             {
                                 //
                                 // 番組タイトルだけを対象とする場合、シリーズもののナンバリングタイトルの数字部分を正確にマッチさせるため

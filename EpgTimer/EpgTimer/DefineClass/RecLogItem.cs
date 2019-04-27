@@ -192,7 +192,7 @@ namespace EpgTimer.DefineClass
                     UInt64 key = epgEventInfoR.Create64Key();
                     if (ChSet5.ChList.ContainsKey(key) == true)
                     {
-                        _tvStationName = ChSet5.ChList[key].ServiceName;
+                        _tvStationName = ChSet5.ChList[key].service_name;
                     }
                     else
                     {

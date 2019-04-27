@@ -35,11 +35,11 @@ namespace EpgTimer.UserCtrlView
         ObservableCollection<SearchLogResultItem> _searchLogResultItems = new ObservableCollection<SearchLogResultItem>();
         List<DateItem> _dateItemList = new List<DateItem>();
         ObservableCollection<ContentKindInfo> _contentKindInfoList = new ObservableCollection<ContentKindInfo>();
-        ObservableCollection<ServiceItem> _serviceList_Tere = new ObservableCollection<ServiceItem>();
-        ObservableCollection<ServiceItem> _serviceList_BS = new ObservableCollection<ServiceItem>();
-        ObservableCollection<ServiceItem> _serviceList_CS = new ObservableCollection<ServiceItem>();
-        ObservableCollection<ServiceItem> _serviceList_1seg = new ObservableCollection<ServiceItem>();
-        ObservableCollection<ServiceItem> _serviceList_Other = new ObservableCollection<ServiceItem>();
+        ObservableCollection<ServiceViewItem> _serviceList_Tere = new ObservableCollection<ServiceViewItem>();
+        ObservableCollection<ServiceViewItem> _serviceList_BS = new ObservableCollection<ServiceViewItem>();
+        ObservableCollection<ServiceViewItem> _serviceList_CS = new ObservableCollection<ServiceViewItem>();
+        ObservableCollection<ServiceViewItem> _serviceList_1seg = new ObservableCollection<ServiceViewItem>();
+        ObservableCollection<ServiceViewItem> _serviceList_Other = new ObservableCollection<ServiceViewItem>();
 
         ObservableCollection<SearchLogItem> _searchLogItems = new ObservableCollection<SearchLogItem>();
         SearchLogItem _logItem_Edit = null;
@@ -54,7 +54,7 @@ namespace EpgTimer.UserCtrlView
         ObservableCollection<SearchLogNotWordItem> _notWordItems = new ObservableCollection<SearchLogNotWordItem>();
         SolidColorBrush _brush_Transparent = new SolidColorBrush(Colors.Transparent);
         SolidColorBrush _brush_Yellow = new SolidColorBrush(Colors.Yellow);
-        BackgroundWorker _bgw_UpdateTabItem = new BackgroundWorker();
+        BackgroundWorker _bgw_UpdateTabItem = new BackgroundWorker();   
         BackgroundWorker _bgw_UpdateSearchResults = new BackgroundWorker();
         BackgroundWorker _bgw_UpdateReserveInfo = new BackgroundWorker();
         BackgroundWorker _bgw_UpdateResultDB = new BackgroundWorker();
@@ -155,20 +155,12 @@ namespace EpgTimer.UserCtrlView
             border_ChangeHeader.Visibility = Visibility.Visible;
         }
 
-        public void update(UpdateNotifyItem notifyItem0)
+        public void update_EpgData()
         {
-            switch (notifyItem0)
-            {
-                case UpdateNotifyItem.EpgData:
-                    _isEpgUpdated = true;
-                    break;
-                case UpdateNotifyItem.ReserveInfo:
-                    updateReserveInfo();
-                    break;
-            }
+            _isEpgUpdated = true;
         }
 
-        void updateReserveInfo()
+        public void update_ReserveInfo()
         {
             _counter_ReserveInfoUpdated++;
             if (IsVisible)
@@ -336,43 +328,42 @@ namespace EpgTimer.UserCtrlView
             _serviceList_CS.Clear();
             _serviceList_1seg.Clear();
             _serviceList_Other.Clear();
-            foreach (ChSet5Item chItem1 in ChSet5.ChListSelected)
+            foreach (EpgServiceInfo serviceInfo1 in ChSet5.ChListSelected)
             {
-                ServiceItem svcItem1 = new ServiceItem();
-                svcItem1.ServiceInfo = chItem1.ToInfo();
+                ServiceViewItem svcItem1 = new ServiceViewItem(serviceInfo1);
                 // 地デジ
-                if ((0x7880 <= svcItem1.ServiceInfo.ONID && svcItem1.ServiceInfo.ONID <= 0x7FE8) &&
-                    (svcItem1.ServiceInfo.service_type == 0x01 || svcItem1.ServiceInfo.service_type == 0xA5))
+                if ((0x7880 <= serviceInfo1.ONID && serviceInfo1.ONID <= 0x7FE8) &&
+                    (serviceInfo1.service_type == 0x01 || serviceInfo1.service_type == 0xA5))
                 {
                     svcItem1.IsSelected = (checkBox_Editor_Tere.IsChecked == true);
                     _serviceList_Tere.Add(svcItem1);
                 }
                 // BS
-                if (svcItem1.ServiceInfo.ONID == 0x04 &&
-                    (svcItem1.ServiceInfo.service_type == 0x01 || svcItem1.ServiceInfo.service_type == 0xA5))
+                if (serviceInfo1.ONID == 0x04 &&
+                    (serviceInfo1.service_type == 0x01 || serviceInfo1.service_type == 0xA5))
                 {
                     svcItem1.IsSelected = (checkBox_Editor_BS.IsChecked == true);
                     _serviceList_BS.Add(svcItem1);
                 }
                 // CS
-                if ((svcItem1.ServiceInfo.ONID == 0x06 || svcItem1.ServiceInfo.ONID == 0x07) &&
-                    (svcItem1.ServiceInfo.service_type == 0x01 || svcItem1.ServiceInfo.service_type == 0xA5))
+                if ((serviceInfo1.ONID == 0x06 || serviceInfo1.ONID == 0x07) &&
+                    (serviceInfo1.service_type == 0x01 || serviceInfo1.service_type == 0xA5))
                 {
                     svcItem1.IsSelected = (checkBox_Editor_CS.IsChecked == true);
                     _serviceList_CS.Add(svcItem1);
                 }
                 // 1seg
-                if ((0x7880 <= svcItem1.ServiceInfo.ONID && svcItem1.ServiceInfo.ONID <= 0x7FE8)
+                if ((0x7880 <= serviceInfo1.ONID && serviceInfo1.ONID <= 0x7FE8)
                     //&& item.ServiceInfo.partialReceptionFlag == 1
                     )
                 {
                     _serviceList_1seg.Add(svcItem1);
                 }
                 // other
-                if (svcItem1.ServiceInfo.ONID != 0x04 &&
-                    svcItem1.ServiceInfo.ONID != 0x06 &&
-                    svcItem1.ServiceInfo.ONID != 0x07 &&
-                    !(0x7880 <= svcItem1.ServiceInfo.ONID && svcItem1.ServiceInfo.ONID <= 0x7FE8))
+                if (serviceInfo1.ONID != 0x04 &&
+                    serviceInfo1.ONID != 0x06 &&
+                    serviceInfo1.ONID != 0x07 &&
+                    !(0x7880 <= serviceInfo1.ONID && serviceInfo1.ONID <= 0x7FE8))
                 {
                     _serviceList_Other.Add(svcItem1);
                 }
@@ -409,7 +400,7 @@ namespace EpgTimer.UserCtrlView
 
             foreach (var item in _serviceList_Tere.Concat(_serviceList_BS).Concat(_serviceList_CS).Concat(_serviceList_1seg).Concat(_serviceList_Other))
             {
-                item.IsSelected = (searchKey1.serviceList.Contains((long)item.ID));
+                item.IsSelected = (searchKey1.serviceList.Contains((long)item.Key));
             }
 
             foreach (EpgSearchDateInfo info in searchKey1.dateList)
@@ -574,7 +565,7 @@ namespace EpgTimer.UserCtrlView
         void search(SearchLogItem logItem0)
         {
             var epgList1 = new List<EpgEventInfo>();
-            ErrCode err = CommonManager.CreateSrvCtrl().SendSearchPg(CommonUtil.ToList((EpgSearchKeyInfo)logItem0.epgSearchKeyInfoS), ref epgList1);
+            ErrCode err = CommonManager.CreateSrvCtrl().SendSearchPg(new List<EpgSearchKeyInfo>() { logItem0.epgSearchKeyInfoS }, ref epgList1);
             if (CommonManager.CmdErrMsgTypical(err, "検索") == false) return;
             //
             List<SearchLogResultItem> resultList1 = new List<SearchLogResultItem>();
@@ -796,25 +787,25 @@ namespace EpgTimer.UserCtrlView
             }
             searchKey1.notContetFlag = (byte)(checkBox_Editor_notContent.IsChecked == true ? 1 : 0);
             // サービス
-            foreach (ServiceItem item1 in listView_service_Tera.Items)
+            foreach (ServiceViewItem item1 in listView_service_Tera.Items)
             {
                 if (item1.IsSelected == true)
                 {
-                    searchKey1.serviceList.Add((Int64)item1.ID);
+                    searchKey1.serviceList.Add((Int64)item1.Key);
                 }
             }
-            foreach (ServiceItem item1 in listView_service_BS.Items)
+            foreach (ServiceViewItem item1 in listView_service_BS.Items)
             {
                 if (item1.IsSelected == true)
                 {
-                    searchKey1.serviceList.Add((Int64)item1.ID);
+                    searchKey1.serviceList.Add((Int64)item1.Key);
                 }
             }
-            foreach (ServiceItem item1 in listView_service_CS.Items)
+            foreach (ServiceViewItem item1 in listView_service_CS.Items)
             {
                 if (item1.IsSelected == true)
                 {
-                    searchKey1.serviceList.Add((Int64)item1.ID);
+                    searchKey1.serviceList.Add((Int64)item1.Key);
                 }
             }
             // Date
@@ -849,18 +840,18 @@ namespace EpgTimer.UserCtrlView
         void hideSelectedService()
         {
             ListView listView1 = (ListView)tabControl_Edit_Service.SelectedContent;
-            List<ServiceItem> hiddenList1 = new List<ServiceItem>();
-            foreach (ServiceItem item1 in listView1.SelectedItems)
+            List<ServiceViewItem> hiddenList1 = new List<ServiceViewItem>();
+            foreach (ServiceViewItem item1 in listView1.SelectedItems)
             {
                 item1.IsSelected = false;
                 hiddenList1.Add(item1);
             }
             if (0 < hiddenList1.Count)
             {
-                foreach (ServiceItem item1 in hiddenList1)
+                foreach (ServiceViewItem item1 in hiddenList1)
                 {
-                    ObservableCollection<ServiceItem> serviceItems1 = listView1.ItemsSource as ObservableCollection<ServiceItem>;
-                    serviceItems1.Remove(item1);
+                    ObservableCollection<ServiceViewItem> ServiceViewItems1 = listView1.ItemsSource as ObservableCollection<ServiceViewItem>;
+                    ServiceViewItems1.Remove(item1);
                 }
             }
         }
@@ -1025,7 +1016,7 @@ namespace EpgTimer.UserCtrlView
                         }
                         else if (0 < _counter_ReserveInfoUpdated)
                         {
-                            updateReserveInfo();
+                            update_ReserveInfo();
                         }
                         _isUpdateView_Doing = false;
                     }));
@@ -1061,7 +1052,7 @@ namespace EpgTimer.UserCtrlView
 
         private void checkBox_Editor_Tere_Checked(object sender, RoutedEventArgs e)
         {
-            foreach (ServiceItem item1 in _serviceList_Tere)
+            foreach (ServiceViewItem item1 in _serviceList_Tere)
             {
                 item1.IsSelected = true;
             }
@@ -1069,7 +1060,7 @@ namespace EpgTimer.UserCtrlView
 
         private void checkBox_Editor_Tere_Unchecked(object sender, RoutedEventArgs e)
         {
-            foreach (ServiceItem item1 in _serviceList_Tere)
+            foreach (ServiceViewItem item1 in _serviceList_Tere)
             {
                 item1.IsSelected = false;
             }
@@ -1077,7 +1068,7 @@ namespace EpgTimer.UserCtrlView
 
         private void checkBox_BS_Checked(object sender, RoutedEventArgs e)
         {
-            foreach (ServiceItem item1 in _serviceList_BS)
+            foreach (ServiceViewItem item1 in _serviceList_BS)
             {
                 item1.IsSelected = true;
             }
@@ -1085,7 +1076,7 @@ namespace EpgTimer.UserCtrlView
 
         private void checkBox_BS_Unchecked(object sender, RoutedEventArgs e)
         {
-            foreach (ServiceItem item1 in _serviceList_BS)
+            foreach (ServiceViewItem item1 in _serviceList_BS)
             {
                 item1.IsSelected = false;
             }
@@ -1093,7 +1084,7 @@ namespace EpgTimer.UserCtrlView
 
         private void checkBox_CS_Checked(object sender, RoutedEventArgs e)
         {
-            foreach (ServiceItem item1 in _serviceList_CS)
+            foreach (ServiceViewItem item1 in _serviceList_CS)
             {
                 item1.IsSelected = true;
             }
@@ -1101,7 +1092,7 @@ namespace EpgTimer.UserCtrlView
 
         private void checkBox_CS_Unchecked(object sender, RoutedEventArgs e)
         {
-            foreach (ServiceItem item1 in _serviceList_CS)
+            foreach (ServiceViewItem item1 in _serviceList_CS)
             {
                 item1.IsSelected = false;
             }
@@ -2181,6 +2172,16 @@ namespace EpgTimer.UserCtrlView
         private void button_Result_Help_Click(object sender, RoutedEventArgs e)
         {
             searchLogView.showHelp();
+        }
+
+        #region - Inner Class -
+        #endregion
+
+        class DateItem
+        {
+            public DateItem(EpgSearchDateInfo info) { DateInfo = info; }
+            public EpgSearchDateInfo DateInfo { get; private set; }
+            public override string ToString() { return CommonManager.ConvertTimeText(DateInfo); }
         }
     }
 }
