@@ -1,24 +1,16 @@
 ﻿using EpgTimer.Common;
 using EpgTimer.DefineClass;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace EpgTimer.UserCtrlView
 {
@@ -54,7 +46,7 @@ namespace EpgTimer.UserCtrlView
         ObservableCollection<SearchLogNotWordItem> _notWordItems = new ObservableCollection<SearchLogNotWordItem>();
         SolidColorBrush _brush_Transparent = new SolidColorBrush(Colors.Transparent);
         SolidColorBrush _brush_Yellow = new SolidColorBrush(Colors.Yellow);
-        BackgroundWorker _bgw_UpdateTabItem = new BackgroundWorker();   
+        BackgroundWorker _bgw_UpdateTabItem = new BackgroundWorker();
         BackgroundWorker _bgw_UpdateSearchResults = new BackgroundWorker();
         BackgroundWorker _bgw_UpdateReserveInfo = new BackgroundWorker();
         BackgroundWorker _bgw_UpdateResultDB = new BackgroundWorker();
@@ -66,9 +58,8 @@ namespace EpgTimer.UserCtrlView
         /// <summary>
         /// 検索条件が変更された？
         /// </summary> 
-        public bool _isSearchLogItemEdited = false;
+        bool _isSearchLogItemEdited = false;
         MainWindow _mainWindow = Application.Current.MainWindow as MainWindow;
-        bool _isUpdateView_Doing = false;
 
         #region - Constructor -
         #endregion
@@ -960,6 +951,30 @@ namespace EpgTimer.UserCtrlView
             set { toggleButton_Result_ShowConfirmed.IsChecked = value; }
         }
 
+        bool isUpdateView_Doing
+        {
+            get { return this._isUpdateView_Doing; }
+            set
+            {
+                this._isUpdateView_Doing = value;
+                if (value)
+                {
+                    this.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        this.messagePanel.Visibility = Visibility.Visible;
+                    }));
+                }
+                else
+                {
+                    this.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        this.messagePanel.Visibility = Visibility.Collapsed;
+                    }));
+                }
+            }
+        }
+        bool _isUpdateView_Doing = false;
+
         #region - Event Handler -
         #endregion
 
@@ -978,8 +993,8 @@ namespace EpgTimer.UserCtrlView
             {
                 System.Threading.Tasks.Task.Factory.StartNew(() =>
                 {
-                    if (_isUpdateView_Doing) { return; }
-                    _isUpdateView_Doing = true;
+                    if (isUpdateView_Doing) { return; }
+                    isUpdateView_Doing = true;
                     //
                     bool isUpdated1 = false;
                     List<SearchLogItem> searchLogItems1 = db_SearchLog.selectByTab(tabInfo.ID);
@@ -1018,7 +1033,7 @@ namespace EpgTimer.UserCtrlView
                         {
                             update_ReserveInfo();
                         }
-                        _isUpdateView_Doing = false;
+                        isUpdateView_Doing = false;
                     }));
                 });
             }
