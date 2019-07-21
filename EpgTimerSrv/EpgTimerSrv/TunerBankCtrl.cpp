@@ -115,7 +115,7 @@ bool CTunerBankCtrl::DelReserve(DWORD reserveID, vector<CHECK_RESULT>* retList)
 			//hTunerProcessは必ず!NULL
 			CWatchBlock watchBlock(&this->watchContext);
 			CSendCtrlCmd ctrlCmd;
-			ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+			ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 			CHECK_RESULT ret;
 			ret.type = 0;
 			ret.reserveID = reserveID;
@@ -216,7 +216,7 @@ vector<CTunerBankCtrl::CHECK_RESULT> CTunerBankCtrl::Check(vector<DWORD>* starte
 	CSendCtrlCmd ctrlCmd;
 	if( this->hTunerProcess ){
 		//チューナ起動時にはこれを再度呼ぶこと
-		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 	}
 
 	if( this->specialState == TR_EPGCAP ){
@@ -238,7 +238,8 @@ vector<CTunerBankCtrl::CHECK_RESULT> CTunerBankCtrl::Check(vector<DWORD>* starte
 		//ネットワークモードではGUIキープできないのでBonDriverが変更されるかもしれない
 		//BonDriverが変更されたチューナはこのバンクの管理下に置けないので、ネットワークモードを解除する
 		wstring bonDriver;
-		if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS && CompareNoCase(bonDriver, this->bonFileName) != 0 ){
+		if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS &&
+		    UtilComparePath(bonDriver.c_str(), this->bonFileName.c_str()) != 0 ){
 			if( ctrlCmd.SendViewSetID(-1) == CMD_SUCCESS ){
 				CBlockLock lock(&this->watchContext.lock);
 				CloseHandle(this->hTunerProcess);
@@ -255,7 +256,8 @@ vector<CTunerBankCtrl::CHECK_RESULT> CTunerBankCtrl::Check(vector<DWORD>* starte
 	}else if( this->hTunerProcess && this->tunerChLocked == false ){
 		//GUIキープされていないのでBonDriverが変更されるかもしれない
 		wstring bonDriver;
-		if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS && CompareNoCase(bonDriver, this->bonFileName) != 0 ){
+		if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS &&
+		    UtilComparePath(bonDriver.c_str(), this->bonFileName.c_str()) != 0 ){
 			if( ctrlCmd.SendViewSetID(-1) == CMD_SUCCESS ){
 				CBlockLock lock(&this->watchContext.lock);
 				CloseHandle(this->hTunerProcess);
@@ -491,7 +493,7 @@ vector<CTunerBankCtrl::CHECK_RESULT> CTunerBankCtrl::Check(vector<DWORD>* starte
 				this->tunerResetLock = false;
 				this->tunerChChgTick = GetTickCount();
 				this->notifyManager.AddNotifyMsg(NOTIFY_UPDATE_PRE_REC_START, this->bonFileName);
-				ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+				ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 				r.retryOpenCount = 0;
 			}else if( ++r.retryOpenCount >= 4 || r.retryOpenCount == 2 && CloseOtherTuner() == false ){
 				//試行2回→他チューナ終了成功時さらに2回→起動できなかった
@@ -515,7 +517,8 @@ vector<CTunerBankCtrl::CHECK_RESULT> CTunerBankCtrl::Check(vector<DWORD>* starte
 				//ネットワークモードを解除
 				wstring bonDriver;
 				DWORD status;
-				if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS && CompareNoCase(bonDriver, this->bonFileName) == 0 &&
+				if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS &&
+				    UtilComparePath(bonDriver.c_str(), this->bonFileName.c_str()) == 0 &&
 				    ctrlCmd.SendViewGetStatus(&status) == CMD_SUCCESS && (status == VIEW_APP_ST_NORMAL || status == VIEW_APP_ST_ERR_CH_CHG) ){
 					//プロセスを引き継ぐ
 					this->tunerONID = r.onid;
@@ -728,7 +731,7 @@ bool CTunerBankCtrl::CreateCtrl(DWORD* ctrlID, DWORD* partialCtrlID, const TUNER
 		}
 	}
 	CSendCtrlCmd ctrlCmd;
-	ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+	ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 	DWORD newID;
 	if( ctrlCmd.SendViewCreateCtrl(&newID) != CMD_SUCCESS ){
 		return false;
@@ -767,7 +770,7 @@ bool CTunerBankCtrl::CreateCtrl(DWORD* ctrlID, DWORD* partialCtrlID, const TUNER
 	SYSTEMTIME st;
 	ConvertSystemTime(reserve.startTime, &st);
 	wstring msg;
-	Format(msg, L"%s %04d/%02d/%02d %02d:%02d:%02d\xFF5E %s", reserve.stationName.c_str(),
+	Format(msg, L"%ls %04d/%02d/%02d %02d:%02d:%02d\xFF5E %ls", reserve.stationName.c_str(),
 	       st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, reserve.title.c_str());
 	this->notifyManager.AddNotifyMsg(NOTIFY_UPDATE_PRE_REC_START, msg);
 	return true;
@@ -775,7 +778,7 @@ bool CTunerBankCtrl::CreateCtrl(DWORD* ctrlID, DWORD* partialCtrlID, const TUNER
 
 void CTunerBankCtrl::SaveProgramInfo(LPCWSTR recPath, const EPGDB_EVENT_INFO& info, bool append) const
 {
-	fs_path savePath = GetPrivateProfileToFolderPath(L"SET", L"RecInfoFolder", GetCommonIniPath().c_str());
+	fs_path savePath = GetPrivateProfileToString(L"SET", L"RecInfoFolder", L"", GetCommonIniPath().c_str());
 
 	if( savePath.empty() ){
 		savePath = fs_path(recPath).concat(L".program.txt");
@@ -800,7 +803,7 @@ void CTunerBankCtrl::SaveProgramInfo(LPCWSTR recPath, const EPGDB_EVENT_INFO& in
 	}
 
 	//※原作と異なりディレクトリの自動生成はしない
-	std::unique_ptr<FILE, decltype(&fclose)> fp(secure_wfopen(savePath.c_str(), append ? L"abN" : L"wbN"), fclose);
+	std::unique_ptr<FILE, decltype(&fclose)> fp(UtilOpenFile(savePath, append ? UTIL_O_CREAT_APPEND : UTIL_SECURE_WRITE), fclose);
 	if( fp ){
 		if( append ){
 			fputs("\r\n-----------------------\r\n", fp.get());
@@ -821,7 +824,7 @@ bool CTunerBankCtrl::RecStart(const TUNER_RESERVE_WORK& reserve, __int64 now) co
 	}
 	CReNamePlugInUtil utilCache;
 	CSendCtrlCmd ctrlCmd;
-	ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+	ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 	bool isMainCtrl = true;
 	for( int i = 0; i < 2; i++ ){
 		if( reserve.ctrlID[i] != 0 ){
@@ -888,7 +891,7 @@ bool CTunerBankCtrl::RecStart(const TUNER_RESERVE_WORK& reserve, __int64 now) co
 		SYSTEMTIME st;
 		ConvertSystemTime(reserve.startTime, &st);
 		wstring msg;
-		Format(msg, L"%s %04d/%02d/%02d %02d:%02d:%02d\r\n%s", reserve.stationName.c_str(),
+		Format(msg, L"%ls %04d/%02d/%02d %02d:%02d:%02d\r\n%ls", reserve.stationName.c_str(),
 		       st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, reserve.title.c_str());
 		this->notifyManager.AddNotifyMsg(NOTIFY_UPDATE_REC_START, msg);
 		return true;
@@ -933,7 +936,7 @@ bool CTunerBankCtrl::StartEpgCap(const vector<SET_CH_INFO>& setChList)
 		if( OpenTuner(this->recMinWake, true, false, false, true, NULL) ){
 			CWatchBlock watchBlock(&this->watchContext);
 			CSendCtrlCmd ctrlCmd;
-			ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+			ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 			//EPG取得開始
 			if( ctrlCmd.SendViewEpgCapStart(setChList) == CMD_SUCCESS ){
 				this->specialState = TR_EPGCAP;
@@ -960,7 +963,7 @@ bool CTunerBankCtrl::SearchEpgInfo(WORD sid, WORD eid, EPGDB_EVENT_INFO* resVal)
 	if( this->hTunerProcess && this->specialState == TR_IDLE ){
 		CWatchBlock watchBlock(&this->watchContext);
 		CSendCtrlCmd ctrlCmd;
-		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 		SEARCH_EPG_INFO_PARAM val;
 		val.ONID = this->tunerONID;
 		val.TSID = this->tunerTSID;
@@ -985,7 +988,7 @@ int CTunerBankCtrl::GetEventPF(WORD sid, bool pfNextFlag, EPGDB_EVENT_INFO* resV
 	if( this->hTunerProcess && this->specialState == TR_IDLE && (this->tunerChLocked == false || GetTickCount() - this->tunerChChgTick > 8000) ){
 		CWatchBlock watchBlock(&this->watchContext);
 		CSendCtrlCmd ctrlCmd;
-		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 		GET_EPG_PF_INFO_PARAM val;
 		val.ONID = this->tunerONID;
 		val.TSID = this->tunerTSID;
@@ -1029,7 +1032,7 @@ bool CTunerBankCtrl::OpenNWTV(int id, bool nwUdp, bool nwTcp, const SET_CH_INFO&
 		this->nwtvID = id;
 		CWatchBlock watchBlock(&this->watchContext);
 		CSendCtrlCmd ctrlCmd;
-		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 		ctrlCmd.SendViewSetCh(chInfo);
 		return true;
 	}
@@ -1063,7 +1066,7 @@ bool CTunerBankCtrl::OpenTuner(bool minWake, bool noView, bool nwUdp, bool nwTcp
 		return false;
 	}
 	fs_path commonIniPath = GetCommonIniPath();
-	fs_path strIni = GetModulePath().replace_filename(L"ViewApp.ini");
+	fs_path strIni = fs_path(commonIniPath).replace_filename(L"ViewApp.ini");
 
 	wstring strExecute = GetPrivateProfileToString(L"SET", L"RecExePath", L"", commonIniPath.c_str());
 	if( strExecute.empty() ){
@@ -1092,7 +1095,7 @@ bool CTunerBankCtrl::OpenTuner(bool minWake, bool noView, bool nwUdp, bool nwTcp
 		CSendCtrlCmd ctrlCmd;
 		vector<DWORD> registGUI = this->notifyManager.GetRegistGUI();
 		for( size_t i = 0; i < registGUI.size(); i++ ){
-			ctrlCmd.SetPipeSetting(CMD2_GUI_CTRL_WAIT_CONNECT, CMD2_GUI_CTRL_PIPE, registGUI[i]);
+			ctrlCmd.SetPipeSetting(CMD2_GUI_CTRL_PIPE, registGUI[i]);
 			if( ctrlCmd.SendGUIExecute(L'"' + strExecute + L'"' + strParam, &this->tunerPid) == CMD_SUCCESS ){
 				//ハンドル開く前に終了するかもしれない
 				this->hTunerProcess = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE | PROCESS_SET_INFORMATION, FALSE, this->tunerPid);
@@ -1118,7 +1121,7 @@ bool CTunerBankCtrl::OpenTuner(bool minWake, bool noView, bool nwUdp, bool nwTcp
 		//IDのセット
 		CWatchBlock watchBlock(&this->watchContext);
 		CSendCtrlCmd ctrlCmd;
-		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 		ctrlCmd.SetConnectTimeOut(0);
 		//起動完了まで最大30秒ほど待つ
 		for( DWORD tick = GetTickCount(); GetTickCount() - tick < 30000; ){
@@ -1144,7 +1147,7 @@ bool CTunerBankCtrl::OpenTuner(bool minWake, bool noView, bool nwUdp, bool nwTcp
 			}
 		}
 		TerminateProcess(this->hTunerProcess, 0xFFFFFFFF);
-		_OutputDebugString(L"CTunerBankCtrl::%s: Terminated TunerID=0x%08x\r\n", L"OpenTuner()", this->tunerID);
+		_OutputDebugString(L"CTunerBankCtrl::%ls: Terminated TunerID=0x%08x\r\n", L"OpenTuner()", this->tunerID);
 		CloseTuner();
 	}
 	return false;
@@ -1156,12 +1159,12 @@ void CTunerBankCtrl::CloseTuner()
 		if( WaitForSingleObject(this->hTunerProcess, 0) == WAIT_TIMEOUT ){
 			CWatchBlock watchBlock(&this->watchContext);
 			CSendCtrlCmd ctrlCmd;
-			ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
+			ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 			ctrlCmd.SendViewAppClose();
 			if( WaitForSingleObject(this->hTunerProcess, 30000) == WAIT_TIMEOUT ){
 				//ぶち殺す
 				TerminateProcess(this->hTunerProcess, 0xFFFFFFFF);
-				_OutputDebugString(L"CTunerBankCtrl::%s: Terminated TunerID=0x%08x\r\n", L"CloseTuner()", this->tunerID);
+				_OutputDebugString(L"CTunerBankCtrl::%ls: Terminated TunerID=0x%08x\r\n", L"CloseTuner()", this->tunerID);
 			}
 		}
 		CBlockLock lock(&this->watchContext.lock);
@@ -1192,23 +1195,20 @@ bool CTunerBankCtrl::CloseOtherTuner()
 
 	//起動中で使えるもの探す
 	for( size_t i = 0; closed == false && i < pidList.size(); i++ ){
-		//原作と異なりイメージ名ではなく接続待機用イベントの有無で判断するので注意
-		wstring eventName;
-		Format(eventName, L"%s%d", CMD2_VIEW_CTRL_WAIT_CONNECT, pidList[i]);
-		HANDLE waitEvent = OpenEvent(SYNCHRONIZE, FALSE, eventName.c_str());
-		if( waitEvent ){
-			CloseHandle(waitEvent);
+		//原作と異なりイメージ名ではなく接続先パイプの有無で判断するので注意
+		CSendCtrlCmd ctrlCmd;
+		ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_PIPE, pidList[i]);
+		if( ctrlCmd.PipeExists() ){
 			//万一のフリーズに対処するため一時的にこのバンクの管理下に置く
 			this->tunerPid = pidList[i];
 			this->hTunerProcess = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, FALSE, this->tunerPid);
 			if( this->hTunerProcess ){
-				CSendCtrlCmd ctrlCmd;
-				ctrlCmd.SetPipeSetting(CMD2_VIEW_CTRL_WAIT_CONNECT, CMD2_VIEW_CTRL_PIPE, this->tunerPid);
 				wstring bonDriver;
 				int id;
 				DWORD status;
 				//録画中のものは奪わないので注意
-				if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS && CompareNoCase(bonDriver, this->bonFileName) == 0 &&
+				if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS &&
+				    UtilComparePath(bonDriver.c_str(), this->bonFileName.c_str()) == 0 &&
 				    ctrlCmd.SendViewGetID(&id) == CMD_SUCCESS && id == -1 &&
 				    ctrlCmd.SendViewGetStatus(&status) == CMD_SUCCESS &&
 				    (status == VIEW_APP_ST_NORMAL || status == VIEW_APP_ST_GET_EPG || status == VIEW_APP_ST_ERR_CH_CHG) ){
@@ -1225,18 +1225,15 @@ bool CTunerBankCtrl::CloseOtherTuner()
 	}
 	//TVTestで使ってるものあるかチェック
 	for( size_t i = 0; closed == false && i < pidList.size(); i++ ){
-		wstring eventName;
-		Format(eventName, L"%s%d", CMD2_TVTEST_CTRL_WAIT_CONNECT, pidList[i]);
-		HANDLE waitEvent = OpenEvent(SYNCHRONIZE, FALSE, eventName.c_str());
-		if( waitEvent ){
-			CloseHandle(waitEvent);
+		CSendCtrlCmd ctrlCmd;
+		ctrlCmd.SetPipeSetting(CMD2_TVTEST_CTRL_PIPE, pidList[i]);
+		if( ctrlCmd.PipeExists() ){
 			this->tunerPid = pidList[i];
 			this->hTunerProcess = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, FALSE, this->tunerPid);
 			if( this->hTunerProcess ){
-				CSendCtrlCmd ctrlCmd;
-				ctrlCmd.SetPipeSetting(CMD2_TVTEST_CTRL_WAIT_CONNECT, CMD2_TVTEST_CTRL_PIPE, this->tunerPid);
 				wstring bonDriver;
-				if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS && CompareNoCase(bonDriver, this->bonFileName) == 0 ){
+				if( ctrlCmd.SendViewGetBonDrivere(&bonDriver) == CMD_SUCCESS &&
+				    UtilComparePath(bonDriver.c_str(), this->bonFileName.c_str()) == 0 ){
 					ctrlCmd.SendViewAppClose();
 					WaitForSingleObject(this->hTunerProcess, 10000);
 					closed = true;
@@ -1257,7 +1254,7 @@ wstring CTunerBankCtrl::ConvertRecName(
 {
 	wstring ret;
 	if( recNamePlugIn[0] ){
-		fs_path plugInPath = GetModulePath().replace_filename(L"RecName\\");
+		wstring plugInPath = GetModulePath().replace_filename(L"RecName").native() + fs_path::preferred_separator;
 		PLUGIN_RESERVE_INFO info;
 		info.startTime = startTime;
 		info.durationSec = durationSec;
@@ -1291,7 +1288,7 @@ wstring CTunerBankCtrl::ConvertRecName(
 	}
 	if( ret.empty() ){
 		const SYSTEMTIME& st = startTimeForDefault;
-		Format(ret, L"%04d%02d%02d%02d%02d%02X%02X%02d-%.159s%s",
+		Format(ret, L"%04d%02d%02d%02d%02d%02X%02X%02d-%.159ls%ls",
 		       st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, HIWORD(tunerID), LOWORD(tunerID), ctrlID, eventName, ext);
 		CheckFileName(ret);
 	}
@@ -1307,7 +1304,7 @@ void CTunerBankCtrl::Watch()
 		if( this->hTunerProcess ){
 			//少なくともhTunerProcessはまだCloseHandle()されていない
 			TerminateProcess(this->hTunerProcess, 0xFFFFFFFF);
-			_OutputDebugString(L"CTunerBankCtrl::%s: Terminated TunerID=0x%08x\r\n", L"Watch()", this->tunerID);
+			_OutputDebugString(L"CTunerBankCtrl::%ls: Terminated TunerID=0x%08x\r\n", L"Watch()", this->tunerID);
 		}
 	}
 }

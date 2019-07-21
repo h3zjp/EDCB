@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "HttpServer.h"
 #include "../../Common/StringUtil.h"
+#include "../../Common/TimeUtil.h"
 #include "../../Common/PathUtil.h"
 #include "../../Common/ParseTextInstances.h"
 #include "civetweb.h"
@@ -44,25 +45,27 @@ bool CHttpServer::StartServer(const SERVER_OPTIONS& op, const std::function<void
 	}
 	string accessLogPath;
 	//ログは_wfopen()されるのでWtoUTF8()。civetweb.cのACCESS_LOG_FILEとERROR_LOG_FILEの扱いに注意
-	WtoUTF8(GetModulePath().replace_filename(L"HttpAccess.log").native(), accessLogPath);
+	WtoUTF8(GetCommonIniPath().replace_filename(L"HttpAccess.log").native(), accessLogPath);
 	string errorLogPath;
-	WtoUTF8(GetModulePath().replace_filename(L"HttpError.log").native(), errorLogPath);
+	WtoUTF8(GetCommonIniPath().replace_filename(L"HttpError.log").native(), errorLogPath);
 
-	fs_path sslFsPath = GetModulePath().replace_filename(L"ssl_");
+	fs_path sslFsPath = GetCommonIniPath().replace_filename(L"ssl_");
 	//認証鍵は実質fopen()されるのでCP_ACP
-	vector<char> sslPath(WideCharToMultiByte(CP_ACP, 0, sslFsPath.c_str(), -1, NULL, 0, NULL, NULL));
-	if( sslPath.empty() ||
-	    WideCharToMultiByte(CP_ACP, 0, sslFsPath.c_str(), -1, sslPath.data(), (int)sslPath.size(), NULL, NULL) == 0 ){
+	string sslPathA;
+	wstring sslPath;
+	WtoA(sslFsPath.native(), sslPathA, UTIL_CONV_ACP);
+	AtoW(sslPathA, sslPath, UTIL_CONV_ACP);
+	if( sslPath != sslFsPath.native() ){
 		OutputDebugString(L"CHttpServer::StartServer(): path has unavailable chars.\r\n");
 		return false;
 	}
-	string sslCertPath = string(sslPath.data()) + "cert.pem";
-	string sslPeerPath = string(sslPath.data()) + "peer.pem";
+	string sslCertPath = sslPathA + "cert.pem";
+	string sslPeerPath = sslPathA + "peer.pem";
 	fs_path sslPeerFsPath = sslFsPath.concat(L"peer.pem");
 
 	string globalAuthPath;
 	//グローバルパスワードは_wfopen()されるのでWtoUTF8()
-	fs_path globalAuthFsPath = GetModulePath().replace_filename(L"glpasswd");
+	fs_path globalAuthFsPath = GetCommonIniPath().replace_filename(L"glpasswd");
 	WtoUTF8(globalAuthFsPath.native(), globalAuthPath);
 
 	//Access Control List
@@ -74,16 +77,16 @@ bool CHttpServer::StartServer(const SERVER_OPTIONS& op, const std::function<void
 	WtoUTF8(op.authenticationDomain, authDomain);
 	string sslCipherList;
 	WtoUTF8(op.sslCipherList, sslCipherList);
-	string numThreads;
-	Format(numThreads, "%d", min(max(op.numThreads, 1), 50));
-	string requestTimeout;
-	Format(requestTimeout, "%d", max(op.requestTimeout, 1));
-	string sslProtocolVersion;
-	Format(sslProtocolVersion, "%d", op.sslProtocolVersion);
+	char numThreads[16];
+	sprintf_s(numThreads, "%d", min(max(op.numThreads, 1), 50));
+	char requestTimeout[16];
+	sprintf_s(requestTimeout, "%d", max(op.requestTimeout, 1));
+	char sslProtocolVersion[16];
+	sprintf_s(sslProtocolVersion, "%d", op.sslProtocolVersion);
 
 	//追加のMIMEタイプ
 	CParseContentTypeText contentType;
-	contentType.ParseText(GetModulePath().replace_filename(L"ContentTypeText.txt").c_str());
+	contentType.ParseText(GetCommonIniPath().replace_filename(L"ContentTypeText.txt").c_str());
 	wstring extraMimeW;
 	for( map<wstring, wstring>::const_iterator itr = contentType.GetMap().begin(); itr != contentType.GetMap().end(); itr++ ){
 		extraMimeW += itr->first + L'=' + itr->second + L',';
@@ -98,12 +101,12 @@ bool CHttpServer::StartServer(const SERVER_OPTIONS& op, const std::function<void
 		"extra_mime_types", extraMime.c_str(),
 		"listening_ports", ports.c_str(),
 		"document_root", rootPathU.c_str(),
-		"num_threads", numThreads.c_str(),
-		"request_timeout_ms", requestTimeout.c_str(),
+		"num_threads", numThreads,
+		"request_timeout_ms", requestTimeout,
 		"ssl_ca_file", sslPeerPath.c_str(),
 		"ssl_default_verify_paths", "no",
 		"ssl_cipher_list", sslCipherList.c_str(),
-		"ssl_protocol_version", sslProtocolVersion.c_str(),
+		"ssl_protocol_version", sslProtocolVersion,
 		"lua_script_pattern", "**.lua$|**.html$|*/api/*$",
 		"access_control_allow_origin", "",
 	};
@@ -123,12 +126,13 @@ bool CHttpServer::StartServer(const SERVER_OPTIONS& op, const std::function<void
 		options[opCount++] = "ssl_certificate";
 		options[opCount++] = sslCertPath.c_str();
 	}
-	if( GetFileAttributes(sslPeerFsPath.c_str()) != INVALID_FILE_ATTRIBUTES || GetLastError() != ERROR_FILE_NOT_FOUND ){
+	bool mightExist = false;
+	if( UtilFileExists(sslPeerFsPath, &mightExist).first || mightExist ){
 		//信頼済み証明書ファイルが「存在しないことを確信」できなければ有効にする
 		options[opCount++] = "ssl_verify_peer";
 		options[opCount++] = "yes";
 	}
-	if( GetFileAttributes(globalAuthFsPath.c_str()) != INVALID_FILE_ATTRIBUTES || GetLastError() != ERROR_FILE_NOT_FOUND ){
+	if( UtilFileExists(globalAuthFsPath, &mightExist).first || mightExist ){
 		//グローバルパスワードは「存在しないことを確信」できなければ指定しておく
 		options[opCount++] = "global_auth_file";
 		options[opCount++] = globalAuthPath.c_str();
@@ -163,7 +167,7 @@ bool CHttpServer::StartServer(const SERVER_OPTIONS& op, const std::function<void
 	if( op.enableSsdpServer ){
 		//"<UDN>uuid:{UUID}</UDN>"が必要
 		string notifyUuid;
-		std::unique_ptr<FILE, decltype(&fclose)> fp(shared_wfopen(fs_path(op.rootPath).append(L"dlna\\dms\\ddd.xml").c_str(), L"rbN"), fclose);
+		std::unique_ptr<FILE, decltype(&fclose)> fp(UtilOpenFile(fs_path(op.rootPath).append(L"dlna").append(L"dms").append(L"ddd.xml"), UTIL_SECURE_READ), fclose);
 		if( fp ){
 			char olbuff[257];
 			for( size_t n = fread(olbuff, 1, 256, fp.get()); ; n = fread(olbuff + 64, 1, 192, fp.get()) + 64 ){
@@ -186,7 +190,9 @@ bool CHttpServer::StartServer(const SERVER_OPTIONS& op, const std::function<void
 			LPCSTR targetArray[] = { "upnp:rootdevice", UPNP_URN_DMS_1, UPNP_URN_CDS_1, UPNP_URN_CMS_1, UPNP_URN_AVT_1 };
 			vector<CUpnpSsdpServer::SSDP_TARGET_INFO> targetList(2 + _countof(targetArray));
 			targetList[0].target = notifyUuid;
-			Format(targetList[0].location, "http://$HOST$:%d/dlna/dms/ddd.xml", notifyPort);
+			char location[64];
+			sprintf_s(location, ":%d/dlna/dms/ddd.xml", notifyPort);
+			targetList[0].location = location;
 			targetList[0].usn = targetList[0].target;
 			targetList[0].notifyFlag = true;
 			targetList[1].target = "ssdp:all";
@@ -250,7 +256,7 @@ string CHttpServer::CreateRandom()
 	if( CryptAcquireContext(&prov, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT) ){
 		unsigned __int64 r[4] = {};
 		if( CryptGenRandom(prov, sizeof(r), (BYTE*)r) ){
-			sprintf_s(ret, "%016I64x%016I64x%016I64x%016I64x", r[0], r[1], r[2], r[3]);
+			sprintf_s(ret, "%016llx%016llx%016llx%016llx", r[0], r[1], r[2], r[3]);
 		}
 		CryptReleaseContext(prov, 0);
 	}
@@ -368,8 +374,8 @@ SYSTEMTIME get_time(lua_State* L, const char* name)
 		st.wMinute = (WORD)get_int(L, "min");
 		st.wSecond = (WORD)get_int(L, "sec");
 		st.wMilliseconds = (WORD)get_int(L, "msec");
-		FILETIME ft;
-		if( SystemTimeToFileTime(&st, &ft) && FileTimeToSystemTime(&ft, &st) ){
+		__int64 t = ConvertI64Time(st);
+		if( t != 0 && ConvertSystemTime(t, &st) ){
 			ret = st;
 		}
 	}
@@ -382,18 +388,23 @@ namespace
 
 wchar_t* utf8towcsdup(const char* s, const wchar_t* prefix = L"")
 {
-	int len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, NULL, 0);
-	if( len > 0 ){
-		wchar_t* w = (wchar_t*)calloc(wcslen(prefix) + len, sizeof(wchar_t));
-		if( w != NULL ){
-			wcscpy_s(w, wcslen(prefix) + 1, prefix);
-			if( MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, w + wcslen(prefix), len) > 0 ){
-				return w;
-			}
+	wstring w;
+	try{
+		string u;
+		UTF8toW(s, w);
+		WtoUTF8(w, u);
+		if( u != s ){
+			return NULL;
 		}
-		free(w);
+		w.insert(0, prefix);
+	}catch(...){
+		return NULL;
 	}
-	return NULL;
+	wchar_t* ret = (wchar_t*)malloc((w.size() + 1) * sizeof(wchar_t));
+	if( ret ){
+		wcscpy_s(ret, w.size() + 1, w.c_str());
+	}
+	return ret;
 }
 
 void nefree(void* p)
@@ -697,7 +708,19 @@ int io_open(lua_State* L)
 		free(wfilename);
 		luaL_argerror(L, 2, "utf8towcsdup");
 	}
-	p->f = shared_wfopen(wfilename, wmode);
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#else
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+	p->f = _wfopen(wfilename, wmode);
+#ifdef __clang__
+#pragma clang diagnostic pop
+#else
+#pragma warning(pop)
+#endif
 	nefree(wmode);
 	nefree(wfilename);
 	return (p->f == NULL) ? luaL_fileresult(L, 0, filename) : 1;
