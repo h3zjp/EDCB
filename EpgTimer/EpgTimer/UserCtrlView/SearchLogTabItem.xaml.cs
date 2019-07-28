@@ -206,7 +206,7 @@ namespace EpgTimer.UserCtrlView
                 {
                     if (!_searchLogItems.Contains(logItem1))
                     {
-                        this.Dispatcher.BeginInvoke(new Action(() =>
+                        Dispatcher.BeginInvoke(new Action(() =>
                         {
                             _searchLogItems.Add(logItem1);
                         }));
@@ -228,10 +228,10 @@ namespace EpgTimer.UserCtrlView
                     _counter_ReserveInfoUpdated = 0;
                     //
                     List<SearchLogItem> searchLogItems1;
-                    if (this._logItem_Edit != null && !_searchLogItems.Contains(this._logItem_Edit))
+                    if (_logItem_Edit != null && !_searchLogItems.Contains(_logItem_Edit))
                     {  // 登録せずに検索を実行した場合にも予約ステータスを表示させる
                         searchLogItems1 = new List<SearchLogItem>(_searchLogItems);
-                        searchLogItems1.Add(this._logItem_Edit);
+                        searchLogItems1.Add(_logItem_Edit);
                     }
                     else
                     {
@@ -916,10 +916,10 @@ namespace EpgTimer.UserCtrlView
 
         public SearchLogTabInfo tabInfo
         {
-            get { return this._tabInfo; }
+            get { return _tabInfo; }
             set
             {
-                this._tabInfo = value;
+                _tabInfo = value;
                 if (value != null)
                 {
                     textBox_TabHeader.Text = value.header;
@@ -936,11 +936,11 @@ namespace EpgTimer.UserCtrlView
         {
             get
             {
-                if (this._recLogWindow == null)
+                if (_recLogWindow == null)
                 {
-                    this._recLogWindow = new RecLogWindow(Window.GetWindow(this));
+                    _recLogWindow = new RecLogWindow(Window.GetWindow(this));
                 }
-                return this._recLogWindow;
+                return _recLogWindow;
             }
         }
         RecLogWindow _recLogWindow = null;
@@ -953,22 +953,22 @@ namespace EpgTimer.UserCtrlView
 
         bool isUpdateView_Doing
         {
-            get { return this._isUpdateView_Doing; }
+            get { return _isUpdateView_Doing; }
             set
             {
-                this._isUpdateView_Doing = value;
+                _isUpdateView_Doing = value;
                 if (value)
                 {
-                    this.Dispatcher.BeginInvoke(new Action(() =>
+                    Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        this.messagePanel.Visibility = Visibility.Visible;
+                        messagePanel.Visibility = Visibility.Visible;
                     }));
                 }
                 else
                 {
-                    this.Dispatcher.BeginInvoke(new Action(() =>
+                    Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        this.messagePanel.Visibility = Visibility.Collapsed;
+                        messagePanel.Visibility = Visibility.Collapsed;
                     }));
                 }
             }
@@ -1014,7 +1014,7 @@ namespace EpgTimer.UserCtrlView
                         }
                     }
                     //
-                    this.Dispatcher.BeginInvoke(new Action(() =>
+                    Dispatcher.BeginInvoke(new Action(() =>
                     {
                         if (isUpdated1)
                         {

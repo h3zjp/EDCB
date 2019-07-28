@@ -93,7 +93,7 @@ namespace EpgTimer.DefineClass
                 Foreground = new SolidColorBrush(Color.FromRgb(10, 10, 100)),
             };
             Paragraph p_basicInfo1 = new Paragraph();
-            List<Paragraph> extInfo1 = new List<Paragraph>();
+            Section sctn_ExtInfo1 = new Section();
 
             string serviceName1 = null;
             UInt64 key = eventInfo.Create64Key();
@@ -138,19 +138,17 @@ namespace EpgTimer.DefineClass
                 {
                     p_basicInfo1.Inlines.Add(new Run(serviceName1));
                 }
-
-                extInfo1.Add(
-                CommonManager.createHyperLink(eventInfo.ShortInfo.text_char));
+                addParagraph(eventInfo.ShortInfo.text_char, sctn_ExtInfo1, 0);
             }
 
             if (eventInfo.ExtInfo != null)
             {
-                extInfo1.Add(
-                    CommonManager.createHyperLink(eventInfo.ExtInfo.text_char));
+                addParagraph(eventInfo.ExtInfo.text_char, sctn_ExtInfo1, 0);
             }
 
             //ジャンル
-            string contentInfo1 = "ジャンル :\r\n";
+            Section sctn_Genre1 = addSection(sctn_ExtInfo1);
+            addParagraph("ジャンル:", sctn_Genre1, 0);
             if (eventInfo.ContentInfo != null)
             {
                 var contentList = new List<ContentKindInfo>();
@@ -160,136 +158,120 @@ namespace EpgTimer.DefineClass
                 }
                 foreach (ContentKindInfo info in contentList.Where(info => info.Data.IsAttributeInfo == false))
                 {
-                    contentInfo1 += info.ListBoxView + "\r\n";
+                    addParagraph(info.ListBoxView, sctn_Genre1);
                 }
             }
-            contentInfo1 += "\r\n";
 
             //映像
-            contentInfo1 += "映像 :";
+            Section sctn_ComponentInfo1 = addSection(sctn_ExtInfo1);
+            addParagraph("映像:", sctn_ComponentInfo1, 0);
             if (eventInfo.ComponentInfo != null)
             {
+                StringBuilder sb1 = new StringBuilder();
                 int streamContent = eventInfo.ComponentInfo.stream_content;
                 int componentType = eventInfo.ComponentInfo.component_type;
                 UInt16 componentKey = (UInt16)(streamContent << 8 | componentType);
                 if (CommonManager.ComponentKindDictionary.ContainsKey(componentKey) == true)
                 {
-                    contentInfo1 += CommonManager.ComponentKindDictionary[componentKey];
+                    addParagraph(CommonManager.ComponentKindDictionary[componentKey], sctn_ComponentInfo1);
                 }
                 if (eventInfo.ComponentInfo.text_char.Length > 0)
                 {
-                    contentInfo1 += "\r\n";
-                    contentInfo1 += eventInfo.ComponentInfo.text_char;
+                    addParagraph(eventInfo.ComponentInfo.text_char, sctn_ComponentInfo1);
                 }
             }
-            contentInfo1 += "\r\n";
 
             //音声
-            contentInfo1 += "音声 :\r\n";
+            Section sctn_AudioInfo1 = addSection(sctn_ExtInfo1);
+            addParagraph("音声:", sctn_AudioInfo1, 0);
             if (eventInfo.AudioInfo != null)
             {
                 foreach (EpgAudioComponentInfoData info in eventInfo.AudioInfo.componentList)
                 {
+                    StringBuilder sb1 = new StringBuilder();
                     int streamContent = info.stream_content;
                     int componentType = info.component_type;
                     UInt16 componentKey = (UInt16)(streamContent << 8 | componentType);
                     if (CommonManager.ComponentKindDictionary.ContainsKey(componentKey) == true)
                     {
-                        contentInfo1 += CommonManager.ComponentKindDictionary[componentKey];
+                        sb1.AppendLine(CommonManager.ComponentKindDictionary[componentKey]);
                     }
                     if (info.text_char.Length > 0)
                     {
-                        contentInfo1 += "\r\n";
-                        contentInfo1 += info.text_char;
+                        sb1.AppendLine(info.text_char);
                     }
-                    contentInfo1 += "\r\n";
-                    contentInfo1 += "サンプリングレート :";
+                    string samplingRate1 = "サンプリングレート: ";
                     switch (info.sampling_rate)
                     {
                         case 1:
-                            contentInfo1 += "16kHz";
+                            samplingRate1 += "16kHz";
                             break;
                         case 2:
-                            contentInfo1 += "22.05kHz";
+                            samplingRate1 += "22.05kHz";
                             break;
                         case 3:
-                            contentInfo1 += "24kHz";
+                            samplingRate1 += "24kHz";
                             break;
                         case 5:
-                            contentInfo1 += "32kHz";
+                            samplingRate1 += "32kHz";
                             break;
                         case 6:
-                            contentInfo1 += "44.1kHz";
+                            samplingRate1 += "44.1kHz";
                             break;
                         case 7:
-                            contentInfo1 += "48kHz";
+                            samplingRate1 += "48kHz";
                             break;
                         default:
                             break;
                     }
-                    contentInfo1 += "\r\n";
-                }
-            }
-            contentInfo1 += "\r\n";
-
-            //スクランブル
-            if (!ChSet5.IsDttv(eventInfo.original_network_id))
-            {
-                if (eventInfo.FreeCAFlag == 0)
-                {
-                    contentInfo1 += "無料放送\r\n";
-                }
-                else
-                {
-                    contentInfo1 += "有料放送\r\n";
-                }
-                contentInfo1 += "\r\n";
-            }
-
-            //イベントリレー
-            if (eventInfo.EventRelayInfo != null)
-            {
-                if (eventInfo.EventRelayInfo.eventDataList.Count > 0)
-                {
-                    contentInfo1 += "イベントリレーあり：\r\n";
-                    foreach (EpgEventData info in eventInfo.EventRelayInfo.eventDataList)
+                    sb1.Append(samplingRate1);
+                    double marginTop1 = 0;
+                    if (1 < sctn_AudioInfo1.Blocks.Count)
                     {
-                        key = info.Create64Key();
-                        if (ChSet5.ChList.ContainsKey(key) == true)
-                        {
-                            contentInfo1 += ChSet5.ChList[key].service_name + "(" + ChSet5.ChList[key].network_name + ")" + " ";
-                        }
-                        else
-                        {
-                            contentInfo1 += "OriginalNetworkID : " + info.original_network_id.ToString() + " (0x" + info.original_network_id.ToString("X4") + ") ";
-                            contentInfo1 += "TransportStreamID : " + info.transport_stream_id.ToString() + " (0x" + info.transport_stream_id.ToString("X4") + ") ";
-                            contentInfo1 += "ServiceID : " + info.service_id.ToString() + " (0x" + info.service_id.ToString("X4") + ") ";
-                        }
-                        contentInfo1 += "EventID : " + info.event_id.ToString() + " (0x" + info.event_id.ToString("X4") + ")\r\n";
-                        contentInfo1 += "\r\n";
+                        marginTop1 = 5;
                     }
-                    contentInfo1 += "\r\n";
+                    addParagraph(sb1.ToString(), sctn_AudioInfo1, marginTop0: marginTop1);
                 }
             }
-
-            contentInfo1 += "OriginalNetworkID : " + eventInfo.original_network_id.ToString() + " (0x" + eventInfo.original_network_id.ToString("X4") + ")\r\n";
-            contentInfo1 += "TransportStreamID : " + eventInfo.transport_stream_id.ToString() + " (0x" + eventInfo.transport_stream_id.ToString("X4") + ")\r\n";
-            contentInfo1 += "ServiceID : " + eventInfo.service_id.ToString() + " (0x" + eventInfo.service_id.ToString("X4") + ")\r\n";
-            contentInfo1 += "EventID : " + eventInfo.event_id.ToString() + " (0x" + eventInfo.event_id.ToString("X4") + ")\r\n";
-            extInfo1.Add(
-                new Paragraph(
-                    new Run(contentInfo1)));
-
+            {
+                Section sctn_ID1 = addSection(sctn_ExtInfo1);
+                addParagraph("OriginalNetworkID : " + eventInfo.original_network_id.ToString() + " (0x" + eventInfo.original_network_id.ToString("X4") + ")", sctn_ID1, 0);
+                addParagraph("TransportStreamID : " + eventInfo.transport_stream_id.ToString() + " (0x" + eventInfo.transport_stream_id.ToString("X4") + ")", sctn_ID1, 0);
+                addParagraph("ServiceID : " + eventInfo.service_id.ToString() + " (0x" + eventInfo.service_id.ToString("X4") + ")", sctn_ID1, 0);
+                addParagraph("EventID : " + eventInfo.event_id.ToString() + " (0x" + eventInfo.event_id.ToString("X4") + ")", sctn_ID1, 0);
+            }
             if (textMode == EventInfoTextMode.All || textMode == EventInfoTextMode.BasicOnly)
             {
                 flowDoc1.Blocks.Add(p_basicInfo1);
             }
             if (textMode == EventInfoTextMode.All)
             {
-                flowDoc1.Blocks.AddRange(extInfo1);
+                flowDoc1.Blocks.Add(sctn_ExtInfo1);
             }
 
             return flowDoc1;
+        }
+
+        static Section addSection(Section parent0, double marginTop = 10)
+        {
+            Section section1 = new Section()
+            {
+                Margin = new System.Windows.Thickness(0, marginTop, 0, 0)
+            };
+            parent0.Blocks.Add(section1);
+
+            return section1;
+        }
+
+        static Paragraph addParagraph(string text0, Section parent0, double marginLeft0 = 10, double marginTop0 = 0)
+        {
+            Paragraph paragraph1 = new Paragraph(new Run(text0))
+            {
+                Margin = new System.Windows.Thickness(marginLeft0, marginTop0, 0, 0)
+            };
+            parent0.Blocks.Add(paragraph1);
+
+            return paragraph1;
         }
 
         public static void highlightText(FlowDocument document, string keyword0, bool isRegex0, bool isCasesensitive0)
