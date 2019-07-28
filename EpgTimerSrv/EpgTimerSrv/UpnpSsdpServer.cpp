@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "UpnpSsdpServer.h"
 #include "../../Common/StringUtil.h"
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <iphlpapi.h>
 #pragma comment(lib, "iphlpapi.lib")
 
@@ -31,8 +33,8 @@ string CUpnpSsdpServer::GetUserAgent()
 	OSVERSIONINFO osvi;
 	osvi.dwOSVersionInfoSize = sizeof(osvi);
 	GetVersionEx(&osvi);
-	string ua;
-	Format(ua, "Windows/%d.%d UPnP/1.1 EpgTimerSrv/0.10", osvi.dwMajorVersion, osvi.dwMinorVersion);
+	char ua[128];
+	sprintf_s(ua, "Windows/%d.%d UPnP/1.1 EpgTimerSrv/0.10", osvi.dwMajorVersion, osvi.dwMinorVersion);
 	return ua;
 }
 
@@ -84,7 +86,7 @@ static bool GetInetAddr(unsigned long* addr, const char* host)
 void CUpnpSsdpServer::SsdpThread(CUpnpSsdpServer* sys)
 {
 	WSAData wsaData;
-	WSAStartup(MAKEWORD(2, 0), &wsaData);
+	WSAStartup(MAKEWORD(2, 2), &wsaData);
 
 	vector<string> nicList = GetNICList();
 	SOCKET sockList[FD_SETSIZE];
@@ -209,8 +211,13 @@ string CUpnpSsdpServer::GetMSearchReply(const char* header, const char* host) co
 				break;
 			}
 			string prop;
-			string val;
-			Separate(string(header, tail), ":", prop, val);
+			string val(header, tail);
+			if( val.find(':') == string::npos ){
+				val.clear();
+			}else{
+				prop.assign(val, 0, val.find(':'));
+				val.erase(0, prop.size() + 1);
+			}
 			prop.erase(prop.find_last_not_of(' ') == string::npos ? 0 : prop.find_last_not_of(' ') + 1);
 			prop.erase(0, prop.find_first_not_of(' '));
 			val.erase(val.find_last_not_of(' ') == string::npos ? 0 : val.find_last_not_of(' ') + 1);
@@ -225,8 +232,7 @@ string CUpnpSsdpServer::GetMSearchReply(const char* header, const char* host) co
 		if( CompareNoCase(man, "\"ssdp:discover\"") == 0 ){
 			for( vector<SSDP_TARGET_INFO>::const_iterator itr = this->targetList.begin(); itr != this->targetList.end(); itr++ ){
 				if( CompareNoCase(itr->target, st) == 0 ){
-					string location = itr->location;
-					Replace(location, "$HOST$", host);
+					string location = "http://" + string(host) + itr->location;
 					resMsg =
 						"HTTP/1.1 200 OK\r\n"
 						"CACHE-CONTROL: max-age = 1800\r\n"
@@ -268,8 +274,7 @@ void CUpnpSsdpServer::SendNotifyAliveOrByebye(bool byebyeFlag, const vector<stri
 								"NTS: ssdp:byebye\r\n"
 								"USN: " + itr->usn + "\r\n\r\n";
 						}else{
-							string location = itr->location;
-							Replace(location, "$HOST$", nicList[i]);
+							string location = "http://" + nicList[i] + itr->location;
 							sendMsg +=
 								"CACHE-CONTROL: max-age = 1800\r\n"
 								"LOCATION: " + location + "\r\n"

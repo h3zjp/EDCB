@@ -80,7 +80,7 @@ namespace EpgTimer.EpgView
         {
             ProgramViewItem popInfo = GetProgramViewData(cursorPos);
             ReserveViewItem lastPopInfoRes = popInfoRes;
-            popInfoRes = GetReserveViewData(cursorPos);
+            popInfoRes = GetReserveViewData(cursorPos).FirstOrDefault();
 
             if (this.EpgStyle().EpgPopupMode == 2 && popInfoRes == null && (
                 onClick == false && !(lastPopInfoRes == null && popInfo == lastPopInfo) ||
@@ -123,9 +123,9 @@ namespace EpgTimer.EpgView
                 this.EpgStyle().EpgExtInfoTooltip == true ? EventInfoTextMode.All : EventInfoTextMode.BasicText));
         }
 
-        public ReserveViewItem GetReserveViewData(Point cursorPos)
+        public IEnumerable<ReserveViewItem> GetReserveViewData(Point cursorPos)
         {
-            return canvas.Children.OfType<Rectangle>().Select(rs => rs.Tag).OfType<ReserveViewItem>().FirstOrDefault(pg => pg.IsPicked(cursorPos));
+            return canvas.Children.OfType<Rectangle>().Select(rs => rs.Tag).OfType<ReserveViewItem>().Where(pg => pg.IsPicked(cursorPos)).Reverse();
         }
         public ProgramViewItem GetProgramViewData(Point cursorPos)
         {
@@ -165,8 +165,21 @@ namespace EpgTimer.EpgView
                     return rect;
                 });
 
-                foreach (ReserveViewItem info in reserveList)
+                var sortList = reserveList.OrderBy(r => (long)r.LeftPos << 32 | r.Data.ReserveID).ToList();
+                for (int i = 0; i < sortList.Count; i++)
                 {
+                    ReserveViewItem info = sortList[i];
+                    for (int j = i - 1; j >= 0 && sortList[j].LeftPos == info.LeftPos; j--)
+                    {
+                        //ほかの枠を覆ってしまう場合は少しだけ縮める。判定には若干余裕を持たせる。
+                        if (18 <= sortList[j].Width && sortList[j].Width <= info.Width
+                            && info.TopPos - sortList[j].TopPos < 6 && sortList[j].BottomPos - info.BottomPos < 6
+                            //あまりないと思うが、6px未満で並んでいる番組の除外。(EventIDでの判定はプログラム予約があるので不可)
+                            && info.BottomPos > sortList[j].TopPos && sortList[j].BottomPos > info.TopPos)
+                        {
+                            info.Width = sortList[j].Width - 6;
+                        }
+                    }
                     var rect = AddRect(info, 10, info);
                     var fillOnlyRect = this.EpgStyle().ReserveRectFillWithShadow ? null : AddRect(info, 9, null);
                     SetReserveBorderColor(info, rect, fillOnlyRect);

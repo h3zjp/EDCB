@@ -5,6 +5,7 @@
 #include "../../Common/CommonDef.h"
 #include "../../Common/CtrlCmdDef.h"
 #include "../../Common/CtrlCmdUtil.h"
+#include <shellapi.h>
 
 CEpgDataCap_BonMain::CEpgDataCap_BonMain(void)
 {
@@ -523,15 +524,10 @@ void CEpgDataCap_BonMain::ViewAppOpen()
 
 void CEpgDataCap_BonMain::StartServer()
 {
-	wstring pipeName = L"";
-	wstring eventName = L"";
-
-	Format(pipeName, L"%s%d", CMD2_VIEW_CTRL_PIPE, GetCurrentProcessId());
-	Format(eventName, L"%s%d", CMD2_VIEW_CTRL_WAIT_CONNECT, GetCurrentProcessId());
-
+	wstring pipeName;
+	Format(pipeName, L"%ls%d", CMD2_VIEW_CTRL_PIPE, GetCurrentProcessId());
 	OutputDebugString(pipeName.c_str());
-	OutputDebugString(eventName.c_str());
-	this->pipeServer.StartServer(eventName.c_str(), pipeName.c_str(), [this](CMD_STREAM* cmdParam, CMD_STREAM* resParam) {
+	this->pipeServer.StartServer(pipeName, [this](CMD_STREAM* cmdParam, CMD_STREAM* resParam) {
 		resParam->param = CMD_ERR;
 		//同期呼び出しが不要なコマンドはここで処理する
 		switch( cmdParam->param ){
@@ -637,7 +633,7 @@ void CEpgDataCap_BonMain::StartServer()
 	});
 }
 
-BOOL CEpgDataCap_BonMain::StopServer(BOOL checkOnlyFlag)
+bool CEpgDataCap_BonMain::StopServer(bool checkOnlyFlag)
 {
 	return this->pipeServer.StopServer(checkOnlyFlag);
 }
@@ -794,7 +790,7 @@ void CEpgDataCap_BonMain::CtrlCmdCallbackInvoked()
 				resVal.drop = 0;
 				resVal.scramble = 0;
 				if( resVal.recFilePath.empty() == false && val.saveErrLog ){
-					fs_path infoPath = GetPrivateProfileToFolderPath(L"SET", L"RecInfoFolder", GetCommonIniPath().c_str());
+					fs_path infoPath = GetPrivateProfileToString(L"SET", L"RecInfoFolder", L"", GetCommonIniPath().c_str());
 					if( infoPath.empty() ){
 						infoPath = resVal.recFilePath + L".err";
 					}else{

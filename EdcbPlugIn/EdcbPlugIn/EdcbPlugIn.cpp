@@ -140,10 +140,10 @@ void CEdcbPlugIn::CMyEventHandler::OnStartupDone()
 		if (CPipeServer::GrantServerAccessToKernelObject(GetCurrentProcess(), SYNCHRONIZE | PROCESS_TERMINATE | PROCESS_SET_INFORMATION)) {
 			m_outer.m_pApp->AddLog(L"Granted SYNCHRONIZE|PROCESS_TERMINATE|PROCESS_SET_INFORMATION to " SERVICE_NAME);
 		}
-		wstring pid;
-		Format(pid, L"%d", GetCurrentProcessId());
+		wstring pipeName;
+		Format(pipeName, L"%ls%d", CMD2_VIEW_CTRL_PIPE, GetCurrentProcessId());
 		CEdcbPlugIn *outer = &m_outer;
-		m_outer.m_pipeServer.StartServer((CMD2_VIEW_CTRL_WAIT_CONNECT + pid).c_str(), (CMD2_VIEW_CTRL_PIPE + pid).c_str(),
+		m_outer.m_pipeServer.StartServer(pipeName,
 		                                 [outer](CMD_STREAM *cmdParam, CMD_STREAM *resParam) { outer->CtrlCmdCallback(cmdParam, resParam); });
 	}
 }
@@ -179,7 +179,7 @@ bool CEdcbPlugIn::Initialize()
 		m_pApp->AddLog(L"TVTestのバージョンが古いため初期化できません。");
 		return false;
 	}
-	m_edcbDir = GetPrivateProfileToFolderPath(L"SET", L"EdcbFolderPath", GetModulePath(g_hinstDLL).replace_extension(L".ini").c_str()).native();
+	m_edcbDir = GetPrivateProfileToString(L"SET", L"EdcbFolderPath", L"", GetModulePath(g_hinstDLL).replace_extension(L".ini").c_str());
 	// 未指定のときはTVTestと同階層のEDCBフォルダ
 	if (m_edcbDir.empty()) {
 		fs_path altPath = GetModulePath().parent_path().parent_path();
@@ -212,7 +212,7 @@ bool CEdcbPlugIn::Initialize()
 		int port = 0;
 		for (; port < 100; ++port) {
 			wstring name;
-			Format(name, L"%s1_%d", MUTEX_TCP_PORT_NAME, port);
+			Format(name, L"%ls1_%d", MUTEX_TCP_PORT_NAME, port);
 			m_sendPipeMutex = CreateMutex(nullptr, FALSE, name.c_str());
 			if (m_sendPipeMutex) {
 				if (GetLastError() != ERROR_ALREADY_EXISTS) {
@@ -344,13 +344,13 @@ LRESULT CEdcbPlugIn::WndProc_(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 		return 0;
 	case WM_CLOSE:
 		// デッドロック回避のためメッセージポンプを維持しつつサーバを終わらせる
-		m_pipeServer.StopServer(TRUE);
+		m_pipeServer.StopServer(true);
 		SetTimer(hwnd, TIMER_TRY_STOP_SERVER, 10, nullptr);
 		return 0;
 	case WM_TIMER:
 		switch (wParam) {
 		case TIMER_TRY_STOP_SERVER:
-			if (m_pipeServer.StopServer(TRUE)) {
+			if (m_pipeServer.StopServer(true)) {
 				KillTimer(hwnd, TIMER_TRY_STOP_SERVER);
 				DestroyWindow(hwnd);
 			}
@@ -430,8 +430,8 @@ LRESULT CEdcbPlugIn::WndProc_(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 							Format(name, L"%04X%04X_epg.dat", chInfo.ONID, basicFlag ? 0xFFFF : chInfo.TSID);
 							m_epgFilePath = GetEdcbSettingPath().append(EPG_SAVE_FOLDER).append(name).native();
 							UtilCreateDirectories(fs_path(m_epgFilePath).parent_path());
-							FILE* epgFile;
-							if (_wfopen_s(&epgFile, (m_epgFilePath + L".tmp").c_str(), L"wbN") == 0) {
+							FILE* epgFile = UtilOpenFile(m_epgFilePath + L".tmp", UTIL_SECURE_WRITE);
+							if (epgFile) {
 								m_pApp->AddLog((L'★' + name).c_str());
 								CBlockLock lock(&m_streamLock);
 								m_epgFile.reset(epgFile);
@@ -507,8 +507,8 @@ LRESULT CEdcbPlugIn::WndProc_(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 							Format(name, L"%04X%04X_epg.dat", onid, basicFlag ? 0xFFFF : tsid);
 							m_epgFilePath = GetEdcbSettingPath().append(EPG_SAVE_FOLDER).append(name).native();
 							UtilCreateDirectories(fs_path(m_epgFilePath).parent_path());
-							FILE* epgFile;
-							if (_wfopen_s(&epgFile, (m_epgFilePath + L".tmp").c_str(), L"wbN") == 0) {
+							FILE* epgFile = UtilOpenFile(m_epgFilePath + L".tmp", UTIL_SECURE_WRITE);
+							if (epgFile) {
 								m_pApp->AddLog((L'★' + name).c_str());
 								CBlockLock lock(&m_streamLock);
 								m_epgFile.reset(epgFile);
@@ -840,7 +840,6 @@ void CEdcbPlugIn::CtrlCmdCallbackInvoked(CMD_STREAM *cmdParam, CMD_STREAM *resPa
 				if (recCtrl.filePath.empty() && !val.saveFolder.empty()) {
 					// saveFolderは最初の要素のみ使う
 					fs_path filePath = val.saveFolder[0].recFolder;
-					ChkFolderPath(filePath);
 					filePath.append(val.saveFolder[0].recFileName);
 					if (!m_recNamePrefix.empty()) {
 						// 対象サービスIDをファイル名に前置する
@@ -919,28 +918,27 @@ void CEdcbPlugIn::CtrlCmdCallbackInvoked(CMD_STREAM *cmdParam, CMD_STREAM *resPa
 					resVal.subRecFlag = 0;
 					if (val.saveErrLog && ((m_dropSaveThresh >= 0 && resVal.drop >= (ULONGLONG)m_dropSaveThresh) ||
 					                       (m_scrambleSaveThresh >= 0 && resVal.scramble >= (ULONGLONG)m_scrambleSaveThresh))) {
-						fs_path infoPath = GetPrivateProfileToFolderPath(L"SET", L"RecInfoFolder", fs_path(m_edcbDir).append(L"Common.ini").c_str());
+						fs_path infoPath = GetPrivateProfileToString(L"SET", L"RecInfoFolder", L"", fs_path(m_edcbDir).append(L"Common.ini").c_str());
 						if (infoPath.empty()) {
 							infoPath = resVal.recFilePath + L".err";
 						}
 						else {
 							infoPath.append(fs_path(resVal.recFilePath).filename().concat(L".err").native());
 						}
-						vector<pair<WORD, string>> pidNameList;
+						vector<pair<WORD, wstring>> pidNameList;
 						TVTest::ServiceInfo si;
 						for (int i = 0; m_pApp->GetServiceInfo(i, &si); ++i) {
-							string name;
-							Format(name, "0x%04X-Video", si.ServiceID);
-							pidNameList.push_back(std::make_pair(si.VideoPID, name));
+							pidNameList.push_back(std::make_pair(si.VideoPID, wstring()));
+							Format(pidNameList.back().second, L"0x%04X-Video", si.ServiceID);
 							for (int j = 0; j < si.NumAudioPIDs; ++j) {
-								Format(name, "0x%04X-Audio(0x%02X)", si.ServiceID, si.AudioComponentType[j]);
-								pidNameList.push_back(std::make_pair(si.AudioPID[j], name));
+								pidNameList.push_back(std::make_pair(si.AudioPID[j], wstring()));
+								Format(pidNameList.back().second, L"0x%04X-Audio(0x%02X)", si.ServiceID, si.AudioComponentType[j]);
 							}
-							Format(name, "0x%04X-Subtitle", si.ServiceID);
-							pidNameList.push_back(std::make_pair(si.SubtitlePID, name));
+							pidNameList.push_back(std::make_pair(si.SubtitlePID, wstring()));
+							Format(pidNameList.back().second, L"0x%04X-Subtitle", si.ServiceID);
 						}
 						for (size_t i = pidNameList.size(); i > 0; --i) {
-							dropCount.SetPIDName(pidNameList[i - 1].first, pidNameList[i - 1].second.c_str());
+							dropCount.SetPIDName(pidNameList[i - 1].first, pidNameList[i - 1].second);
 						}
 						dropCount.SetBonDriver(m_currentBonDriver);
 						dropCount.SaveLog(infoPath.native());
@@ -1004,7 +1002,7 @@ void CEdcbPlugIn::CtrlCmdCallbackInvoked(CMD_STREAM *cmdParam, CMD_STREAM *resPa
 
 fs_path CEdcbPlugIn::GetEdcbSettingPath() const
 {
-	fs_path ret = GetPrivateProfileToFolderPath(L"SET", L"DataSavePath", fs_path(m_edcbDir).append(L"Common.ini").c_str());
+	fs_path ret = GetPrivateProfileToString(L"SET", L"DataSavePath", L"", fs_path(m_edcbDir).append(L"Common.ini").c_str());
 	if (ret.empty()) {
 		ret = fs_path(m_edcbDir).append(L"Setting");
 	}
