@@ -26,13 +26,6 @@ void CReserveManager::Initialize(const CEpgTimerSrvSetting::SETTING& s)
 	this->reserveText.ParseText(fs_path(settingPath).append(RESERVE_TEXT_NAME).c_str());
 
 	ReloadSetting(s);
-	fs_path iniPath = GetModuleIniPath();
-	DWORD shiftID = GetPrivateProfileInt(L"SET", L"RecInfoShiftID", 100000, iniPath.c_str());
-	if( shiftID != 0 ){
-		this->recInfoText.SetNextID(shiftID + 1);
-		TouchFileAsUnicode(iniPath.c_str());
-		WritePrivateProfileInt(L"SET", L"RecInfoShiftID", shiftID % 900000 + 100000, iniPath.c_str());
-	}
 	this->recInfoText.ParseText(fs_path(settingPath).append(REC_INFO_TEXT_NAME).c_str());
 	this->recInfo2Text.ParseText(fs_path(settingPath).append(REC_INFO2_TEXT_NAME).c_str());
 
@@ -64,7 +57,7 @@ void CReserveManager::ReloadSetting(const CEpgTimerSrvSetting::SETTING& s)
 
 	this->recInfoText.SetKeepCount(s.autoDelRecInfo ? s.autoDelRecInfoNum : UINT_MAX);
 	this->recInfoText.SetRecInfoDelFile(GetPrivateProfileInt(L"SET", L"RecInfoDelFile", 0, commonIniPath.c_str()) != 0);
-	this->recInfoText.SetRecInfoFolder(GetPrivateProfileToFolderPath(L"SET", L"RecInfoFolder", commonIniPath.c_str()).c_str());
+	this->recInfoText.SetRecInfoFolder(GetPrivateProfileToString(L"SET", L"RecInfoFolder", L"", commonIniPath.c_str()).c_str());
 	this->recInfoText.CustomizeDelExt(s.applyExtToRecInfoDel);
 	this->recInfoText.SetCustomDelExt(s.delExtList);
 
@@ -788,7 +781,7 @@ wstring CReserveManager::GetNotifyChgReserveMessage(const RESERVE_DATA& oldInfo,
 	SYSTEMTIME stNewEnd;
 	ConvertSystemTime(ConvertI64Time(stNew) + newInfo.durationSecond * I64_1SEC, &stNewEnd);
 	wstring msg;
-	Format(msg, L"%s %04d/%02d/%02d %02d:%02d\xFF5E%02d:%02d\r\n%s\r\nEventID:0x%04X\r\n↓\r\n%s %04d/%02d/%02d %02d:%02d\xFF5E%02d:%02d\r\n%s\r\nEventID:0x%04X",
+	Format(msg, L"%ls %04d/%02d/%02d %02d:%02d\xFF5E%02d:%02d\r\n%ls\r\nEventID:0x%04X\r\n↓\r\n%ls %04d/%02d/%02d %02d:%02d\xFF5E%02d:%02d\r\n%ls\r\nEventID:0x%04X",
 		oldInfo.stationName.c_str(), stOld.wYear, stOld.wMonth, stOld.wDay, stOld.wHour, stOld.wMinute,
 		stOldEnd.wHour, stOldEnd.wMinute, oldInfo.title.c_str(), oldInfo.eventID,
 		newInfo.stationName.c_str(), stNew.wYear, stNew.wMonth, stNew.wDay, stNew.wHour, stNew.wMinute,
@@ -835,7 +828,7 @@ void CReserveManager::CheckTuijyu()
 					wstring msg = GetNotifyChgReserveMessage(itr->second, r);
 					this->notifyManager.AddNotifyMsg(NOTIFY_UPDATE_CHG_TUIJYU, msg);
 					Replace(msg, L"\r\n", L" ");
-					_OutputDebugString(L"●予約(ID=%d)を追従 %s\r\n", r.reserveID, msg.c_str());
+					_OutputDebugString(L"●予約(ID=%d)を追従 %ls\r\n", r.reserveID, msg.c_str());
 				}
 			}
 		}
@@ -952,7 +945,7 @@ void CReserveManager::CheckTuijyuTuner()
 							wstring msg = GetNotifyChgReserveMessage(itrRes->second, r);
 							this->notifyManager.AddNotifyMsg(NOTIFY_UPDATE_REC_TUIJYU, msg);
 							Replace(msg, L"\r\n", L" ");
-							_OutputDebugString(L"●p/f 予約(ID=%d)を追従 %s\r\n", r.reserveID, msg.c_str());
+							_OutputDebugString(L"●p/f 予約(ID=%d)を追従 %ls\r\n", r.reserveID, msg.c_str());
 						}
 						//現在(present)についてはイベントリレーもチェック
 						if( i == 0 && r.recSetting.tuijyuuFlag && info.StartTimeFlag && info.DurationFlag && info.eventRelayInfoGroupType ){
@@ -1073,7 +1066,7 @@ void CReserveManager::CheckTuijyuTuner()
 							this->notifyManager.AddNotifyMsg(NOTIFY_UPDATE_REC_TUIJYU, msg);
 						}
 						Replace(msg, L"\r\n", L" ");
-						_OutputDebugString(L"●予約(ID=%d)を追従 %s\r\n", r.reserveID, msg.c_str());
+						_OutputDebugString(L"●予約(ID=%d)を追従 %ls\r\n", r.reserveID, msg.c_str());
 					}
 				}
 			}
@@ -1095,19 +1088,21 @@ void CReserveManager::CheckAutoDel() const
 		return;
 	}
 
-	//ファイル削除可能なフォルダをドライブごとに仕分け
-	vector<pair<wstring, size_t>> mountList;
+	//ファイル削除可能なフォルダのドライブを調べる
+	vector<wstring> mountList;
 	for( size_t i = 0; i < this->setting.delChkList.size(); i++ ){
-		wstring mountPath = GetChkDrivePath(this->setting.delChkList[i]);
-		mountList.insert(std::find_if(mountList.begin(), mountList.end(),
-			[&](const pair<wstring, size_t>& a) { return CompareNoCase(a.first, mountPath) > 0; }), std::make_pair(mountPath, i));
+		mountList.push_back(UtilGetStorageID(this->setting.delChkList[i]));
 	}
 
 	//ドライブレベルでのチェック
 	__int64 now = GetNowI64Time();
-	for( auto itr = mountList.cbegin(); itr != mountList.end(); ){
+	for( size_t checkIndex = 0; checkIndex < mountList.size(); checkIndex++ ){
+		if( mountList[checkIndex].empty() ){
+			//チェック済み
+			continue;
+		}
 		//直近で必要になりそうな空き領域を概算する
-		ULONGLONG needSize = 0;
+		__int64 needSize = 0;
 		for( auto jtr = this->reserveText.GetMap().cbegin(); jtr != this->reserveText.GetMap().end(); jtr++ ){
 			__int64 startTime, endTime;
 			CalcEntireReserveTime(&startTime, &endTime, jtr->second);
@@ -1120,11 +1115,11 @@ void CReserveManager::CheckAutoDel() const
 					wstring mountPath;
 					if( recFolderList.empty() || CompareNoCase(recFolderList[i].recFolder, L"!Default") == 0 ){
 						//デフォルト(注意: !Defaultの置換は原作にはない)
-						mountPath = GetChkDrivePath(GetRecFolderPath().native());
+						mountPath = UtilGetStorageID(GetRecFolderPath());
 					}else{
-						mountPath = GetChkDrivePath(recFolderList[i].recFolder);
+						mountPath = UtilGetStorageID(recFolderList[i].recFolder);
 					}
-					if( CompareNoCase(mountPath, itr->first) == 0 ){
+					if( CompareNoCase(mountPath, mountList[checkIndex]) == 0 ){
 						if( needSize == 0 ){
 							//延長や外部要因による空き領域減少に対処するため最低限の余裕をとる
 							needSize = 512 * 1024 * 1024;
@@ -1133,53 +1128,58 @@ void CReserveManager::CheckAutoDel() const
 						//(厳密にやるのは簡単ではないので、従来通りゆるい実装にしておく)
 						if( now < startTime ){
 							DWORD bitrate = GetBitrateFromIni(jtr->second.originalNetworkID, jtr->second.transportStreamID, jtr->second.serviceID);
-							needSize += (ULONGLONG)(bitrate / 8 * 1000) * (endTime - startTime) / I64_1SEC;
+							needSize += (__int64)(bitrate / 8 * 1000) * (endTime - startTime) / I64_1SEC;
 						}
 					}
 				}
 			}
 		}
 
-		auto itrEnd = std::find_if(itr + 1, mountList.cend(),
-		                           [=](const pair<wstring, size_t>& a) { return CompareNoCase(a.first, itr->first) != 0; });
-		ULARGE_INTEGER freeBytes;
-		if( needSize > 0 && GetDiskFreeSpaceEx(itr->first.c_str(), &freeBytes, NULL, NULL) && freeBytes.QuadPart < needSize ){
+		__int64 freeBytes = UtilGetStorageFreeBytes(this->setting.delChkList[checkIndex]);
+		if( freeBytes >= 0 && freeBytes < needSize ){
 			//ドライブにある古いTS順に必要なだけ消す
-			__int64 needFreeSize = needSize - freeBytes.QuadPart;
-			vector<pair<WIN32_FIND_DATA, size_t>> findList;
-			for( auto itrSame = itr; itrSame != itrEnd; itrSame++ ){
-				EnumFindFile(fs_path(this->setting.delChkList[itrSame->second]).append(L'*' + this->setting.tsExt).c_str(),
-				             [&](WIN32_FIND_DATA& findData) -> bool {
-					if( (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 && IsExt(findData.cFileName, this->setting.tsExt.c_str()) ){
-						findList.push_back(std::make_pair(findData, itrSame->second));
-					}
-					return true;
-				});
+			__int64 needFreeSize = needSize - freeBytes;
+			vector<pair<UTIL_FIND_DATA, size_t>> findList;
+			for( size_t i = checkIndex; i < mountList.size(); i++ ){
+				if( CompareNoCase(mountList[i], mountList[checkIndex]) == 0 ){
+					EnumFindFile(fs_path(this->setting.delChkList[i]).append(L'*' + this->setting.tsExt),
+					             [&](UTIL_FIND_DATA& findData) -> bool {
+						if( findData.isDir == false && UtilPathEndsWith(findData.fileName.c_str(), this->setting.tsExt.c_str()) ){
+							findList.push_back(std::make_pair(std::move(findData), i));
+						}
+						return true;
+					});
+				}
 			}
 			while( needFreeSize > 0 && findList.empty() == false ){
 				//更新日時が古いもの
 				auto jtr = std::min_element(findList.begin(), findList.end(),
-					[](const pair<WIN32_FIND_DATA, size_t>& a, const pair<WIN32_FIND_DATA, size_t>& b) {
-						return ((__int64)a.first.ftLastWriteTime.dwHighDateTime << 32 | a.first.ftLastWriteTime.dwLowDateTime) <
-						       ((__int64)b.first.ftLastWriteTime.dwHighDateTime << 32 | b.first.ftLastWriteTime.dwLowDateTime); });
-				wstring delPath = fs_path(this->setting.delChkList[jtr->second]).append(jtr->first.cFileName).native();
+					[](const pair<UTIL_FIND_DATA, size_t>& a, const pair<UTIL_FIND_DATA, size_t>& b) {
+						return a.first.lastWriteTime < b.first.lastWriteTime; });
+				fs_path delPath = fs_path(this->setting.delChkList[jtr->second]).append(jtr->first.fileName);
 				if( this->recInfoText.GetMap().end() != std::find_if(this->recInfoText.GetMap().begin(), this->recInfoText.GetMap().end(),
-				        [&](const pair<DWORD, REC_FILE_INFO>& a) { return a.second.protectFlag && CompareNoCase(a.second.recFilePath, delPath) == 0; }) ){
+				        [&](const pair<DWORD, REC_FILE_INFO>& a) {
+				            return a.second.protectFlag && UtilComparePath(a.second.recFilePath.c_str(), delPath.c_str()) == 0; }) ){
 					//プロテクトされた録画済みファイルは消さない
-					_OutputDebugString(L"★No Delete(Protected) : %s\r\n", delPath.c_str());
+					_OutputDebugString(L"★No Delete(Protected) : %ls\r\n", delPath.c_str());
 				}else{
 					DeleteFile(delPath.c_str());
-					needFreeSize -= (__int64)jtr->first.nFileSizeHigh << 32 | jtr->first.nFileSizeLow;
-					_OutputDebugString(L"★Auto Delete2 : %s\r\n", delPath.c_str());
+					needFreeSize -= jtr->first.fileSize;
+					_OutputDebugString(L"★Auto Delete2 : %ls\r\n", delPath.c_str());
 					for( size_t i = 0 ; i < this->setting.delExtList.size(); i++ ){
 						DeleteFile(fs_path(delPath).replace_extension(this->setting.delExtList[i]).c_str());
-						_OutputDebugString(L"★Auto Delete2 : %s\r\n", fs_path(delPath).replace_extension(this->setting.delExtList[i]).c_str());
+						_OutputDebugString(L"★Auto Delete2 : %ls\r\n", fs_path(delPath).replace_extension(this->setting.delExtList[i]).c_str());
 					}
 				}
 				findList.erase(jtr);
 			}
 		}
-		itr = itrEnd;
+		//チェック済みにする
+		for( size_t i = checkIndex + 1; i < mountList.size(); i++ ){
+			if( CompareNoCase(mountList[i], mountList[checkIndex]) == 0 ){
+				mountList[i].clear();
+			}
+		}
 	}
 }
 
@@ -1319,7 +1319,7 @@ void CReserveManager::ProcessRecEnd(const vector<CTunerBankCtrl::CHECK_RESULT>& 
 			SYSTEMTIME stEnd;
 			ConvertSystemTime(ConvertI64Time(st) + item.durationSecond * I64_1SEC, &stEnd);
 			wstring msg;
-			Format(msg, L"%s %04d/%02d/%02d %02d:%02d\xFF5E%02d:%02d\r\n%s\r\n%s",
+			Format(msg, L"%ls %04d/%02d/%02d %02d:%02d\xFF5E%02d:%02d\r\n%ls\r\n%ls",
 			       item.serviceName.c_str(), st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute,
 			       stEnd.wHour, stEnd.wMinute, item.title.c_str(), item.GetComment());
 			this->notifyManager.AddNotifyMsg(NOTIFY_UPDATE_REC_END, msg);
@@ -1574,7 +1574,7 @@ bool CReserveManager::CheckEpgCap(bool isEpgCap)
 							}
 						}
 					}
-					_OutputDebugString(L"★SetSystemTime%s%d\r\n", debug, (int)(delay / I64_1SEC));
+					_OutputDebugString(L"★SetSystemTime%ls%d\r\n", debug, (int)(delay / I64_1SEC));
 					this->epgCapSetTimeSync = true;
 				}
 			}
@@ -1801,25 +1801,36 @@ bool CReserveManager::IsFindRecEventInfo(const EPGDB_EVENT_INFO& info, WORD chkD
 	CBlockLock lock(&this->managerLock);
 	bool ret = false;
 
+#if !defined(EPGDB_STD_WREGEX) && defined(_WIN32)
 	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 	void* pv;
 	if( SUCCEEDED(CoCreateInstance(CLSID_RegExp, NULL, CLSCTX_INPROC_SERVER, IID_IRegExp, &pv)) ){
 		CEpgDBManager::RegExpPtr regExp((IRegExp*)pv, CEpgDBManager::ComRelease);
+#else
+	{
+		std::wregex re;
+#endif
 		if( info.hasShortInfo ){
-			typedef CEpgDBManager::OleCharPtr OleCharPtr;
 			wstring infoEventName = info.shortInfo.event_name;
 			if( this->setting.recInfo2RegExp.empty() == false ){
-				OleCharPtr pattern(SysAllocString(this->setting.recInfo2RegExp.c_str()), SysFreeString);
-				OleCharPtr rplFrom(SysAllocString(infoEventName.c_str()), SysFreeString);
-				OleCharPtr rplTo(SysAllocString(L""), SysFreeString);
+#if !defined(EPGDB_STD_WREGEX) && defined(_WIN32)
+				CEpgDBManager::OleCharPtr pattern(SysAllocString(this->setting.recInfo2RegExp.c_str()), SysFreeString);
+				CEpgDBManager::OleCharPtr rplFrom(SysAllocString(infoEventName.c_str()), SysFreeString);
+				CEpgDBManager::OleCharPtr rplTo(SysAllocString(L""), SysFreeString);
 				BSTR rpl_;
 				if( pattern && rplFrom && rplTo &&
 				    SUCCEEDED(regExp->put_Global(VARIANT_TRUE)) &&
 				    SUCCEEDED(regExp->put_Pattern(pattern.get())) &&
 				    SUCCEEDED(regExp->Replace(rplFrom.get(), rplTo.get(), &rpl_)) ){
-					OleCharPtr rpl(rpl_, SysFreeString);
+					CEpgDBManager::OleCharPtr rpl(rpl_, SysFreeString);
 					infoEventName = SysStringLen(rpl.get()) ? rpl.get() : L"";
 				}else{
+#else
+				try{
+					re.assign(this->setting.recInfo2RegExp);
+					infoEventName = std::regex_replace(infoEventName, re, wstring());
+				}catch( std::regex_error& ){
+#endif
 					OutputDebugString(L"RecInfo2RegExp seems ill-formed\r\n");
 					infoEventName = L"";
 				}
@@ -1834,13 +1845,19 @@ bool CReserveManager::IsFindRecEventInfo(const EPGDB_EVENT_INFO& info, WORD chkD
 					    ConvertI64Time(itr->second.startTime) + chkDayActual*24*60*60*I64_1SEC > ConvertI64Time(info.start_time) ){
 						wstring eventName = itr->second.eventName;
 						if( this->setting.recInfo2RegExp.empty() == false ){
-							OleCharPtr rplFrom(SysAllocString(eventName.c_str()), SysFreeString);
-							OleCharPtr rplTo(SysAllocString(L""), SysFreeString);
+#if !defined(EPGDB_STD_WREGEX) && defined(_WIN32)
+							CEpgDBManager::OleCharPtr rplFrom(SysAllocString(eventName.c_str()), SysFreeString);
+							CEpgDBManager::OleCharPtr rplTo(SysAllocString(L""), SysFreeString);
 							BSTR rpl_;
 							if( rplFrom && rplTo && SUCCEEDED(regExp->Replace(rplFrom.get(), rplTo.get(), &rpl_)) ){
-								OleCharPtr rpl(rpl_, SysFreeString);
+								CEpgDBManager::OleCharPtr rpl(rpl_, SysFreeString);
 								eventName = SysStringLen(rpl.get()) ? rpl.get() : L"";
 							}else{
+#else
+							try{
+								eventName = std::regex_replace(eventName, re, wstring());
+							}catch( std::regex_error& ){
+#endif
 								eventName = L"";
 							}
 						}
@@ -1853,7 +1870,9 @@ bool CReserveManager::IsFindRecEventInfo(const EPGDB_EVENT_INFO& info, WORD chkD
 			}
 		}
 	}
+#if !defined(EPGDB_STD_WREGEX) && defined(_WIN32)
 	CoUninitialize();
+#endif
 
 	return ret;
 }
@@ -1905,7 +1924,7 @@ vector<CH_DATA5> CReserveManager::GetChDataList() const
 
 void CReserveManager::WatchdogThread(CReserveManager* sys)
 {
-	while( WaitForSingleObject(sys->watchdogStopEvent.Handle(), 2000) == WAIT_TIMEOUT ){
+	while( sys->watchdogStopEvent.WaitOne(2000) == false ){
 		for( auto itr = sys->tunerBankMap.cbegin(); itr != sys->tunerBankMap.end(); itr++ ){
 			itr->second->Watch();
 		}
@@ -1915,11 +1934,11 @@ void CReserveManager::WatchdogThread(CReserveManager* sys)
 void CReserveManager::AddPostBatWork(vector<CBatManager::BAT_WORK_INFO>& workList, LPCWSTR fileName)
 {
 	if( workList.empty() == false ){
-		fs_path batFilePath = GetModulePath().replace_filename(fileName);
+		fs_path batFilePath = GetCommonIniPath().replace_filename(fileName);
 		//同名のPowerShellやLuaスクリプトでもよい
-		if( GetFileAttributes(batFilePath.c_str()) != INVALID_FILE_ATTRIBUTES ||
-		    GetFileAttributes(batFilePath.replace_extension(L".ps1").c_str()) != INVALID_FILE_ATTRIBUTES ||
-		    GetFileAttributes(batFilePath.replace_extension(L".lua").c_str()) != INVALID_FILE_ATTRIBUTES ){
+		if( UtilFileExists(batFilePath).first ||
+		    UtilFileExists(batFilePath.replace_extension(L".ps1")).first ||
+		    UtilFileExists(batFilePath.replace_extension(L".lua")).first ){
 			for( size_t i = 0; i < workList.size(); i++ ){
 				workList[i].batFilePath = batFilePath.native();
 				this->batPostManager.AddBatWork(workList[i]);
@@ -1946,7 +1965,7 @@ void CReserveManager::SetBatCustomHandler(LPCWSTR ext, const std::function<void(
 void CReserveManager::AddTimeMacro(vector<pair<string, wstring>>& macroList, const SYSTEMTIME& startTime, DWORD durationSecond, LPCSTR suffix)
 {
 	WCHAR v[64];
-	swprintf_s(v, L"%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
+	swprintf_s(v, L"%04d-%02d-%02dT%02d:%02d:%02d%lc%02d:%02d",
 	           startTime.wYear, startTime.wMonth, startTime.wDay, startTime.wHour, startTime.wMinute, startTime.wSecond,
 	           (I64_UTIL_TIMEZONE < 0 ? L'-' : L'+'),
 	           (int)((I64_UTIL_TIMEZONE < 0 ? -I64_UTIL_TIMEZONE : I64_UTIL_TIMEZONE) / I64_1SEC) / 3600,
@@ -2006,8 +2025,8 @@ void CReserveManager::AddRecInfoMacro(vector<pair<string, wstring>>& macroList, 
 	swprintf_s(v, L"%04X", recInfo.transportStreamID);	macroList.push_back(pair<string, wstring>("TSID16", v));
 	swprintf_s(v, L"%04X", recInfo.serviceID);			macroList.push_back(pair<string, wstring>("SID16", v));
 	swprintf_s(v, L"%04X", recInfo.eventID);			macroList.push_back(pair<string, wstring>("EID16", v));
-	swprintf_s(v, L"%I64d", recInfo.drops);				macroList.push_back(pair<string, wstring>("Drops", v));
-	swprintf_s(v, L"%I64d", recInfo.scrambles);			macroList.push_back(pair<string, wstring>("Scrambles", v));
+	swprintf_s(v, L"%lld", recInfo.drops);				macroList.push_back(pair<string, wstring>("Drops", v));
+	swprintf_s(v, L"%lld", recInfo.scrambles);			macroList.push_back(pair<string, wstring>("Scrambles", v));
 	macroList.push_back(pair<string, wstring>("Title", recInfo.title));
 	macroList.push_back(pair<string, wstring>("ServiceName", recInfo.serviceName));
 	macroList.push_back(pair<string, wstring>("Result", recInfo.GetComment()));

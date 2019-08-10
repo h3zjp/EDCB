@@ -8,7 +8,7 @@
 CBatManager::CBatManager(CNotifyManager& notifyManager_, LPCWSTR tmpBatFileName)
 	: notifyManager(notifyManager_)
 {
-	this->tmpBatFilePath = GetModulePath().replace_filename(tmpBatFileName).native();
+	this->tmpBatFilePath = GetCommonIniPath().replace_filename(tmpBatFileName).native();
 	this->idleMargin = MAXDWORD;
 	this->nextBatMargin = 0;
 }
@@ -92,7 +92,7 @@ void CBatManager::BatWorkThread(CBatManager* sys)
 	for(;;){
 		while( notifyWorkWait && sys->batWorkStopFlag == false && sys->IsWorking() == false ){
 			DWORD tick = GetTickCount();
-			WaitForSingleObject(sys->batWorkEvent.Handle(), notifyWorkWait);
+			sys->batWorkEvent.WaitOne(notifyWorkWait);
 			DWORD diff = GetTickCount() - tick;
 			notifyWorkWait -= min(diff, notifyWorkWait);
 			if( notifyWorkWait == 0 ){
@@ -118,8 +118,9 @@ void CBatManager::BatWorkThread(CBatManager* sys)
 			}
 			work = sys->workList[0];
 			batFilePath = work.batFilePath;
-			if( !IsExt(batFilePath, L".bat") && !IsExt(batFilePath, L".ps1") ){
-				if( sys->customHandler && IsExt(batFilePath, sys->customExt.c_str()) ){
+			if( !UtilPathEndsWith(batFilePath.c_str(), L".bat") &&
+			    !UtilPathEndsWith(batFilePath.c_str(), L".ps1") ){
+				if( sys->customHandler && UtilPathEndsWith(batFilePath.c_str(), sys->customExt.c_str()) ){
 					customHandler_ = sys->customHandler;
 				}else{
 					batFilePath.clear();
@@ -162,7 +163,7 @@ void CBatManager::BatWorkThread(CBatManager* sys)
 						CSendCtrlCmd ctrlCmd;
 						vector<DWORD> registGUI = sys->notifyManager.GetRegistGUI();
 						for( size_t i = 0; i < registGUI.size(); i++ ){
-							ctrlCmd.SetPipeSetting(CMD2_GUI_CTRL_WAIT_CONNECT, CMD2_GUI_CTRL_PIPE, registGUI[i]);
+							ctrlCmd.SetPipeSetting(CMD2_GUI_CTRL_PIPE, registGUI[i]);
 							DWORD pid;
 							if( ctrlCmd.SendGUIExecute(L'"' + sys->tmpBatFilePath + L'"', &pid) == CMD_SUCCESS ){
 								//ハンドル開く前に終了するかもしれない
@@ -189,7 +190,7 @@ void CBatManager::BatWorkThread(CBatManager* sys)
 						}
 						fs_path exePath;
 						wstring strParam;
-						if( IsExt(batFilePath, L".ps1") ){
+						if( UtilPathEndsWith(batFilePath.c_str(), L".ps1") ){
 							//PowerShell
 							strParam = L" -NoProfile -ExecutionPolicy RemoteSigned -File \"" + batFilePath.native() + L"\"";
 							WCHAR szSystemRoot[MAX_PATH];
@@ -216,7 +217,7 @@ void CBatManager::BatWorkThread(CBatManager* sys)
 							CloseHandle(pi.hThread);
 							hProcess = pi.hProcess;
 						}else{
-							_OutputDebugString(L"BAT起動エラー：%s\r\n", batFilePath.c_str());
+							_OutputDebugString(L"BAT起動エラー：%ls\r\n", batFilePath.c_str());
 						}
 					}
 					if( hProcess ){
@@ -227,10 +228,10 @@ void CBatManager::BatWorkThread(CBatManager* sys)
 					}
 				}
 			}else{
-				_OutputDebugString(L"BATファイル作成エラー：%s\r\n", work.batFilePath.c_str());
+				_OutputDebugString(L"BATファイル作成エラー：%ls\r\n", work.batFilePath.c_str());
 			}
 		}else{
-			_OutputDebugString(L"BAT拡張子エラー：%s\r\n", work.batFilePath.c_str());
+			_OutputDebugString(L"BAT拡張子エラー：%ls\r\n", work.batFilePath.c_str());
 		}
 
 		CBlockLock lock(&sys->managerLock);
@@ -241,7 +242,7 @@ void CBatManager::BatWorkThread(CBatManager* sys)
 bool CBatManager::CreateBatFile(BAT_WORK_INFO& info, DWORD& exBatMargin, DWORD& exNotifyInterval, WORD& exSW, wstring& exDirect, vector<char>& buff) const
 {
 	//バッチの作成
-	std::unique_ptr<FILE, decltype(&fclose)> fp(secure_wfopen(info.batFilePath.c_str(), L"rbN"), fclose);
+	std::unique_ptr<FILE, decltype(&fclose)> fp(UtilOpenFile(info.batFilePath, UTIL_SECURE_READ), fclose);
 	if( !fp ){
 		return false;
 	}
@@ -260,8 +261,7 @@ bool CBatManager::CreateBatFile(BAT_WORK_INFO& info, DWORD& exBatMargin, DWORD& 
 	//カスタムハンドラ用ファイルの中身
 	buff.clear();
 
-	fs_path batFilePath = info.batFilePath;
-	if( !IsExt(batFilePath, L".bat") ){
+	if( !UtilPathEndsWith(info.batFilePath.c_str(), L".bat") ){
 		exDirectFlag = true;
 		exFormatTime = true;
 	}
@@ -315,7 +315,7 @@ bool CBatManager::CreateBatFile(BAT_WORK_INFO& info, DWORD& exBatMargin, DWORD& 
 			}
 		}
 	}
-	if( exDirectFlag && (IsExt(batFilePath, L".bat") || IsExt(batFilePath, L".ps1")) ){
+	if( exDirectFlag && (UtilPathEndsWith(info.batFilePath.c_str(), L".bat") || UtilPathEndsWith(info.batFilePath.c_str(), L".ps1")) ){
 		exDirect = CreateEnvironment(info);
 		return exDirect.empty() == false;
 	}
@@ -362,8 +362,8 @@ bool CBatManager::CreateBatFile(BAT_WORK_INFO& info, DWORD& exBatMargin, DWORD& 
 		}
 	}
 
-	fp.reset(secure_wfopen(this->tmpBatFilePath.c_str(), L"wbN"));
-	if( !fp || fputs(strWrite.c_str(), fp.get()) < 0 || fflush(fp.get()) != 0 ){
+	fp.reset(UtilOpenFile(this->tmpBatFilePath, UTIL_SECURE_WRITE | UTIL_F_IONBF));
+	if( !fp || fputs(strWrite.c_str(), fp.get()) < 0 ){
 		return false;
 	}
 
