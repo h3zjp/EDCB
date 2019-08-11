@@ -519,6 +519,7 @@ namespace EpgTimer
         public ListSortDirection ResSortDirection { get; set; }
         public WindowSettingData WndSettings { get; set; }
         public double SearchWndTabsHeight { get; set; }
+        public double SearchWndJunreHeight { get; set; }
         public bool CloseMin { get; set; }
         public bool WakeMin { get; set; }
         public bool WakeMinTraySilent { get; set; }
@@ -942,6 +943,7 @@ namespace EpgTimer
             ResSortDirection = ListSortDirection.Ascending;
             WndSettings = new WindowSettingData();
             SearchWndTabsHeight = 0;
+            SearchWndJunreHeight = -1;
             CloseMin = false;
             WakeMin = false;
             WakeMinTraySilent = true;
@@ -1085,6 +1087,7 @@ namespace EpgTimer
             dest.ResSortDirection = ResSortDirection;
             dest.WndSettings = WndSettings;
             dest.SearchWndTabsHeight = SearchWndTabsHeight;
+            dest.SearchWndJunreHeight = SearchWndJunreHeight;
             dest.RecInfoColumnHead = RecInfoColumnHead;
             dest.RecInfoSortDirection = RecInfoSortDirection;
             dest.OpenFolderWithFileDialog = OpenFolderWithFileDialog;

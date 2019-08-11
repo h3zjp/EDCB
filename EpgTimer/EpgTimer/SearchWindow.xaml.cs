@@ -13,7 +13,7 @@ namespace EpgTimer
     public partial class SearchWindow : SearchWindowBase
     {
         public static event ViewUpdatedHandler ViewReserveUpdated = null;
-
+        
         protected override DataItemViewBase DataView { get { return mainWindow.autoAddView.epgAutoAddView; } }
         protected override string AutoAddString { get { return "キーワード予約"; } }
 
@@ -44,6 +44,10 @@ namespace EpgTimer
                 {
                     grid_Tabs.Height = new GridLength(Math.Min(Settings.Instance.SearchWndTabsHeight, Height));
                 }
+                if (Settings.Instance.SearchWndJunreHeight >= 0)
+                {
+                    searchKeyView.grid_Junre.Height = new GridLength(Settings.Instance.SearchWndJunreHeight);
+                }
 
                 //リストビュー関連の設定
                 var list_columns = Resources["ReserveItemViewColumns"] as GridViewColumnList;
@@ -62,9 +66,10 @@ namespace EpgTimer
                 //最初にコマンド集の初期化
                 mc = new CmdExeSearch(this);
                 mc.SetFuncGetSearchList(isAll => (isAll == true ? lstCtrl.dataList.ToList() : lstCtrl.GetSelectedItemsList()));
-                mc.SetFuncSelectSingleSearchData(lstCtrl.SelectSingleItem);
+                mc.SetFuncSelectSingleSearchData((noChange) => lstCtrl.SelectSingleItem(noChange));
                 mc.SetFuncReleaseSelectedData(() => listView_result.UnselectAll());
-                mc.recSettingView = this.recSettingView;
+                mc.SetFuncGetRecSetting(() => recSettingView.GetRecSetting());
+                mc.SetFuncGetSearchKey(() => searchKeyView.GetSearchKey());
 
                 //コマンド集に無いもの
                 mc.AddReplaceCommand(EpgCmds.ReSearch, mc_Research);
@@ -81,7 +86,7 @@ namespace EpgTimer
 
                 //コマンド集を振り替えるもの
                 mc.AddReplaceCommand(EpgCmds.JumpReserve, (sender, e) => mc_JumpTab(CtxmCode.ReserveView));
-                mc.AddReplaceCommand(EpgCmds.JumpRecInfo, (sender, e) => mc_JumpTab(CtxmCode.RecInfoView));
+                mc.AddReplaceCommand(EpgCmds.JumpRecInfo, (sender, e) => mc_JumpTab(lstCtrl.SelectSingleItem(true).IsReserved ? CtxmCode.ReserveView : CtxmCode.RecInfoView));
                 mc.AddReplaceCommand(EpgCmds.JumpTuner, (sender, e) => mc_JumpTab(CtxmCode.TunerReserveView));
                 mc.AddReplaceCommand(EpgCmds.JumpTable, (sender, e) => mc_JumpTab(CtxmCode.EpgView));
 
@@ -268,7 +273,6 @@ namespace EpgTimer
 
         private void mc_JumpTab(CtxmCode trg_code)
         {
-            lstCtrl.SelectSingleItem();
             JumpTabAndHide(trg_code, mc.GetJumpTabItem(trg_code));
         }
         private void mc_Research(object sender, ExecutedRoutedEventArgs e)
@@ -321,6 +325,7 @@ namespace EpgTimer
             lstCtrl.SaveViewDataToSettings();
             base.WriteWindowSaveData();
             Settings.Instance.SearchWndTabsHeight = grid_Tabs.Height.Value;
+            Settings.Instance.SearchWndJunreHeight = Math.Min(searchKeyView.grid_Junre.ActualHeight, searchKeyView.grid_Filter.ActualHeight - 6);
             Settings.Instance.ArcSearch = searchKeyView.checkBox_noArcSearch.IsChecked == false;
         }
 
@@ -444,7 +449,7 @@ namespace EpgTimer
 
         public AutoAddWindow(S data = null, AutoAddMode mode = AutoAddMode.Find)
         {
-            this.Loaded += (sender, e) => { SetData(data); SetViewMode(mode); UpdateViewSelection(); };
+            this.Loaded += (sender, e) => { SetData(data); SetViewMode(data != null && DataID == 0 ? AutoAddMode.NewAdd : mode); UpdateViewSelection(); };
         }
 
         protected AutoAddMode winMode = AutoAddMode.Find;
@@ -463,7 +468,7 @@ namespace EpgTimer
         public override void ChangeData(object data)
         {
             if (SetData(data as S) == false) return;
-            SetViewMode(AutoAddMode.Change);
+            SetViewMode(DataID == 0 ? AutoAddMode.NewAdd : AutoAddMode.Change);
         }
 
         //proc 0:追加、1:変更、2:削除、3:予約ごと削除

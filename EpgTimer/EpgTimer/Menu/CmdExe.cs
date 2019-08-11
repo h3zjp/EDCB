@@ -106,7 +106,7 @@ namespace EpgTimer
             cmdList.Add(EpgCmds.ChgRecEndReboot, new cmdOption(mc_ChangeRecSetting, null, cmdExeType.MultiItem, true));
             cmdList.Add(EpgCmds.ChgKeyEnabled, new cmdOption(mc_ChangeKeyEnabled, null, cmdExeType.MultiItem, true));
             cmdList.Add(EpgCmds.ChgOnOffKeyEnabled, new cmdOption(mc_ChangeOnOffKeyEnabled, null, cmdExeType.MultiItem, true));
-            cmdList.Add(EpgCmds.CopyItem, new cmdOption(mc_CopyItem, null, cmdExeType.MultiItem));
+            cmdList.Add(EpgCmds.CopyItem, new cmdOption(mc_CopyItem, null, cmdExeType.Direct));//別途処理
             cmdList.Add(EpgCmds.Delete, new cmdOption(mc_Delete, null, cmdExeType.MultiItem));
             cmdList.Add(EpgCmds.Delete2, new cmdOption(mc_Delete2, null, cmdExeType.MultiItem));
             cmdList.Add(EpgCmds.DeleteAll, new cmdOption(mc_Delete, null, cmdExeType.AllItem));
@@ -282,7 +282,14 @@ namespace EpgTimer
         protected virtual void mc_ChgGenre(object sender, ExecutedRoutedEventArgs e) { }
         protected virtual void mc_ChangeKeyEnabled(object sender, ExecutedRoutedEventArgs e) { }
         protected virtual void mc_ChangeOnOffKeyEnabled(object sender, ExecutedRoutedEventArgs e) { }
-        protected virtual void mc_CopyItem(object sender, ExecutedRoutedEventArgs e) { }
+        protected virtual void mc_CopyItem(object sender, ExecutedRoutedEventArgs e)
+        {
+            GetExecute(Settings.Instance.MenuSet.ShowCopyDialog ?
+                        new cmdOption(mcs_CopyItemDialog, null, cmdExeType.SingleItem, true) :
+                        new cmdOption(mcs_CopyItem, null, cmdExeType.MultiItem))(sender, e);
+        }
+        protected virtual void mcs_CopyItem(object sender, ExecutedRoutedEventArgs e) { }
+        protected virtual void mcs_CopyItemDialog(object sender, ExecutedRoutedEventArgs e) { }
         protected virtual void mc_Delete(object sender, ExecutedRoutedEventArgs e) { }
         protected virtual bool mcs_DeleteCheck(ExecutedRoutedEventArgs e)
         {
@@ -499,7 +506,7 @@ namespace EpgTimer
             }
             else if (e.Command == EpgCmds.ChgMarginValue)
             {
-                return MenuUtil.ChangeMarginValue(infoList, CmdExeUtil.ReadIdData(e, 0, 2) == 1, this.Owner);
+                return MenuUtil.ChangeMarginValue(infoList, CmdExeUtil.ReadIdData(e, 0, 2) == 1, this.Owner, PresetResCompare);
             }
             else if (e.Command == EpgCmds.ChgRecEndMode)
             {
@@ -562,6 +569,11 @@ namespace EpgTimer
                     else if (menu.Tag == EpgCmdsEx.RestoreMenu)
                     {
                         mm.CtxmGenerateRestoreMenuItems(menu);
+                    }
+                    //コピー
+                    if (menu.Tag == EpgCmds.CopyItem)
+                    {
+                        menu.Header = "コピーを追加" + (Settings.Instance.MenuSet.ShowCopyDialog ? "..." : "");
                     }
 
                     //コマンド集に応じた処理
@@ -642,7 +654,7 @@ namespace EpgTimer
                 subMenu.IsEnabled = isEnabled || GetCmdParam(subMenu.Tag as ICommand).ExeType != cmdExeType.SingleItem;
             }
         }
-        protected void mcs_chgMenuOpening(MenuItem menu)
+        protected void mcs_chgMenuOpening(MenuItem menu, bool PresetResCompare = false)
         {
             if (menu.IsEnabled == false) return;
 
@@ -681,8 +693,8 @@ namespace EpgTimer
                 {
                     mm.CtxmGenerateChgOnPresetItems(subMenu);
 
-                    RecPresetItem pre_0 = listr[0].RecSettingInfo.LookUpPreset(listr[0].IsManual);
-                    RecPresetItem value = listr.All(data => data.RecSettingInfo.LookUpPreset(data.IsManual).ID == pre_0.ID) ? pre_0 : null;
+                    RecPresetItem pre_0 = listr[0].RecSettingInfo.LookUpPreset(listr[0].IsManual, false, PresetResCompare);
+                    RecPresetItem value = listr.All(data => data.RecSettingInfo.LookUpPreset(data.IsManual, false, PresetResCompare).ID == pre_0.ID) ? pre_0 : null;
                     subMenu.Header = string.Format("プリセット(_P) : {0}", value == null ? "*" : value.DisplayName);
                     SetCheckmarkSubMenus(subMenu, value == null ? int.MinValue : value.ID);
                 }
@@ -829,6 +841,7 @@ namespace EpgTimer
             cmdMessage.Add(EpgCmds.ChgRecEndReboot, "録画後動作を変更");
             cmdMessage.Add(EpgCmds.ChgKeyEnabled, "有効/無効を変更");
             cmdMessage.Add(EpgCmds.ChgOnOffKeyEnabled, "有効/無効切替を実行");
+            cmdMessage.Add(EpgCmds.CopyItem, "コピーを追加");
             cmdMessage.Add(EpgCmds.Delete, "削除を実行");
             cmdMessage.Add(EpgCmds.Delete2, "予約ごと削除を実行");
             cmdMessage.Add(EpgCmds.DeleteAll, "全て削除を実行");

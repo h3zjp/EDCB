@@ -14,6 +14,7 @@ namespace EpgTimer
             ViewNotContentFlag = false;
             EpgSettingIndex = 0;
             EpgSettingID = 0;
+            RecSetting = null;
             ViewMode = 0;
             NeedTimeOnlyBasic = false;
             NeedTimeOnlyWeek = false;
@@ -25,11 +26,13 @@ namespace EpgTimer
             FilterEnded = false;
             ID = -1;
             IsVisible = true;
+            JumpTarget = true;
         }
         public string TabName { get; set; }
         public override string ToString() { return TabName; }
         public int EpgSettingID { get; set; }
         public int EpgSettingIndex { get; set; }
+        public RecSettingData RecSetting { get; set; }
         public int ViewMode { get; set; }
         public bool NeedTimeOnlyBasic { get; set; }
         public bool NeedTimeOnlyWeek { get; set; }
@@ -46,6 +49,7 @@ namespace EpgTimer
         public int ID { get; set; }
         public string Uid { get { return ID.ToString(); } }
         public bool IsVisible { get; set; }
+        public bool JumpTarget { get; set; }
 
         public EpgSearchKeyInfo GetSearchKeyReloadEpg()
         {
