@@ -459,7 +459,7 @@ namespace EpgTimer
             }
         }
         protected virtual void mc_SearchRecLog(object sender, ExecutedRoutedEventArgs e) { }
-        protected bool mcc_chgRecSetting(ExecutedRoutedEventArgs e)
+        protected bool mcc_chgRecSetting(ExecutedRoutedEventArgs e, bool PresetResCompare = false)
         {
             List<RecSettingData> infoList = dataList.OfType<IRecSetttingData>().Where(data => data.RecSettingInfo != null).RecSettingList();
             if (infoList.Count == 0) return false;
