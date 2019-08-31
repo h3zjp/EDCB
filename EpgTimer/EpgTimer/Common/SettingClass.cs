@@ -560,6 +560,7 @@ namespace EpgTimer
         public bool NwTvMode { get; set; }
         public bool NwTvModeUDP { get; set; }
         public bool NwTvModeTCP { get; set; }
+        public bool NwTvModePipe { get; set; }
         public bool FilePlay { get; set; }
         public string FilePlayExe { get; set; }
         public string FilePlayCmd { get; set; }
@@ -983,6 +984,7 @@ namespace EpgTimer
             NwTvMode = false;
             NwTvModeUDP = false;
             NwTvModeTCP = false;
+            NwTvModePipe = false;
             FilePlay = true;
             FilePlayExe = "";
             FilePlayCmd = "";
