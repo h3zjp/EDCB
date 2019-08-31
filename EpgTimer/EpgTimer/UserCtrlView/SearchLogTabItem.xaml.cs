@@ -34,7 +34,6 @@ namespace EpgTimer.UserCtrlView
         ObservableCollection<ServiceViewItem> _serviceList_Other = new ObservableCollection<ServiceViewItem>();
 
         ObservableCollection<SearchLogItem> _searchLogItems = new ObservableCollection<SearchLogItem>();
-        SearchLogItem _logItem_Edit = null;
         List<SearchLogItem> _selectedLogItems = new List<SearchLogItem>();
         /// <summary>
         /// 編集中
@@ -228,10 +227,10 @@ namespace EpgTimer.UserCtrlView
                     _counter_ReserveInfoUpdated = 0;
                     //
                     List<SearchLogItem> searchLogItems1;
-                    if (_logItem_Edit != null && !_searchLogItems.Contains(_logItem_Edit))
+                    if (logItem_Edit != null && !_searchLogItems.Contains(logItem_Edit))
                     {  // 登録せずに検索を実行した場合にも予約ステータスを表示させる
                         searchLogItems1 = new List<SearchLogItem>(_searchLogItems);
-                        searchLogItems1.Add(_logItem_Edit);
+                        searchLogItems1.Add(logItem_Edit);
                     }
                     else
                     {
@@ -366,7 +365,7 @@ namespace EpgTimer.UserCtrlView
             if (logItem0 == null) { return; }
             if (logItem0.epgSearchKeyInfoS == null) { return; } // 検索ログアイテムをダブルクリックするとNullReferenceExceptionが発生することがあった。原因不明
             //
-            _logItem_Edit = logItem0;
+            logItem_Edit = logItem0;
             clearEditor();
 
             textBox_Editor_SeachLogName.Text = logItem0.name;
@@ -677,28 +676,30 @@ namespace EpgTimer.UserCtrlView
             changeVisibility_Resutltems();
         }
 
-        void addNotWord(ref List<SearchLogItem> searchLogItems1, SearchLogResultItem resultItem0, string notWord0, bool isTitleOnly0)
+        void addNotWord(ref List<SearchLogItem> searchLogItems0, SearchLogResultItem resultItem0, string notWord0, bool isTitleOnly0)
         {
             SearchLogNotWordItem notWordItem1;
-            if (_logItem_Edit != null)
+            if (logItem_Edit != null)
             {
-                if (_logItem_Edit.addNotWord(out notWordItem1, _logItem_Edit.ID, notWord0, isTitleOnly0))
+                if (logItem_Edit.addNotWord(out notWordItem1, notWord0, isTitleOnly0))
                 {
+                    addLog("編集中の「" + logItem_Edit.name + "」にNotWord「" + notWordItem1.word + "」を追加");
                     add2NotWordItems(notWordItem1);
-                    if (searchLogItems1.Count == 0)
+                    if (searchLogItems0.Count == 0)
                     {
-                        searchLogItems1.Add(_logItem_Edit);
+                        searchLogItems0.Add(logItem_Edit);
                     }
                 }
             }
             else
             {
                 SearchLogItem logItem1 = _searchLogItems.Where(x1 => x1.ID == resultItem0.searchLogItemID).First();
-                if (logItem1.addNotWord(out notWordItem1, logItem1.ID, notWord0, true))
+                if (logItem1.addNotWord(out notWordItem1, notWord0, true))
                 {
-                    if (!searchLogItems1.Contains(logItem1))
+                    addLog("「" + logItem1.name + "」にNotWord「" + notWordItem1.word + "」を追加");
+                    if (!searchLogItems0.Contains(logItem1))
                     {
-                        searchLogItems1.Add(logItem1);
+                        searchLogItems0.Add(logItem1);
                     }
                 }
             }
@@ -900,11 +901,26 @@ namespace EpgTimer.UserCtrlView
 
         void update_SearchLogItem_Service()
         {
-            if (_logItem_Edit == null) { return; }
+            if (logItem_Edit == null) { return; }
             //
-            _logItem_Edit.epgSearchKeyInfoS = getEpgSearchKeyInfoFromEditor(_logItem_Edit.epgSearchKeyInfoS.ID);
-            db_SearchLog.updateOrInsert(_logItem_Edit);
-            _logItem_Edit = null;
+            logItem_Edit.epgSearchKeyInfoS = getEpgSearchKeyInfoFromEditor(logItem_Edit.epgSearchKeyInfoS.ID);
+            db_SearchLog.updateOrInsert(logItem_Edit);
+            logItem_Edit = null;
+        }
+
+        void addLog(string log0)
+        {
+            return;
+            //
+            string log1 = "[" + DateTime.Now.ToString("HH:mm:ss") + "] " + log0;
+            listBox_DebugLog.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                listBox_DebugLog.Items.Insert(0, log1);
+                while (2000 < listBox_DebugLog.Items.Count)
+                {
+                    listBox_DebugLog.Items.RemoveAt(listBox_DebugLog.Items.Count - 1);
+                }
+            }));
         }
 
         #region - Property -
@@ -974,6 +990,22 @@ namespace EpgTimer.UserCtrlView
             }
         }
         bool _isUpdateView_Doing = false;
+
+        SearchLogItem logItem_Edit
+        {
+            get { return this._logItem_Edit; }
+            set
+            {
+                this._logItem_Edit = value;
+                string val1 = "null";
+                if (value != null)
+                {
+                    val1 = value.name;
+                }
+                addLog("logItem_Editプロパティに「" + val1 + "」をセット");
+            }
+        }
+        SearchLogItem _logItem_Edit = null;
 
         #region - Event Handler -
         #endregion
@@ -1120,10 +1152,11 @@ namespace EpgTimer.UserCtrlView
 
         private void button_Editor_UpdateSearchLogItem_Click(object sender, RoutedEventArgs e)
         {
-            SearchLogItem logItem_Edit1 = _logItem_Edit;
-            _logItem_Edit = null;
+            SearchLogItem logItem_Edit1 = logItem_Edit;
+            logItem_Edit = null;
             if (logItem_Edit1 == null)
             {
+                throw new InvalidOperationException("button_Editor_UpdateSearchLogItem_Click(): logItem_Edit1 == null");
                 logItem_Edit1 = new SearchLogItem(tabInfo.ID);
             }
             logItem_Edit1.name = textBox_Editor_SeachLogName.Text;
@@ -1146,7 +1179,15 @@ namespace EpgTimer.UserCtrlView
 
             System.Threading.Tasks.Task.Factory.StartNew(() =>
             {
-                db_SearchLog.updateOrInsert(logItem_Edit1);
+                int db_Count_NewItem1 = db_Count_NewItem1 = db_SearchLog.updateOrInsert(logItem_Edit1);
+                if (0 < db_Count_NewItem1)
+                {
+                    addLog("SearchLogItem「" + logItem_Edit1.name + "」を新規作成");
+                }
+                else
+                {
+                    addLog("SearchLogItem「" + logItem_Edit1.name + "」を更新");
+                }
             });
 
             showEditor(false);
@@ -1322,6 +1363,7 @@ namespace EpgTimer.UserCtrlView
             if (!_isSearchLogItemEdited
                 || MessageBox.Show("変更は保存されません。よろしいですか？", "確認", MessageBoxButton.OKCancel, MessageBoxImage.Exclamation, MessageBoxResult.OK) == MessageBoxResult.OK)
             {
+                logItem_Edit = null;
                 showEditor(false);
                 clearEditor();
             }
@@ -1329,16 +1371,16 @@ namespace EpgTimer.UserCtrlView
 
         private void button_Editor_Search_Click(object sender, RoutedEventArgs e)
         {
-            if (_logItem_Edit == null)
+            if (logItem_Edit == null)
             {
-                _logItem_Edit = new SearchLogItem(tabInfo.ID);
+                logItem_Edit = new SearchLogItem(tabInfo.ID);
             }
-            _logItem_Edit.epgSearchKeyInfoS = getEpgSearchKeyInfoFromEditor(_logItem_Edit.epgSearchKeyInfoS.ID);
-            _logItem_Edit.notWordItem_Replace(_notWordItems);
-            search(_logItem_Edit);
-            db_SearchLog.update_RecodeStatus(_logItem_Edit, false);
+            logItem_Edit.epgSearchKeyInfoS = getEpgSearchKeyInfoFromEditor(logItem_Edit.epgSearchKeyInfoS.ID);
+            logItem_Edit.notWordItem_Replace(_notWordItems);
+            search(logItem_Edit);
+            db_SearchLog.update_RecodeStatus(logItem_Edit, false);
             clear_searchLogResultItems();
-            foreach (var resultItem1 in _logItem_Edit.resultItems)
+            foreach (var resultItem1 in logItem_Edit.resultItems)
             {
                 _searchLogResultItems.Add(resultItem1);
             }
@@ -1661,6 +1703,10 @@ namespace EpgTimer.UserCtrlView
         /// <param name="e"></param>
         private void listView_SearchLog_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            foreach (SearchLogItem item1 in listView_SearchLog.SelectedItems)
+            {
+                addLog("SearchLogItem「" + item1.name + "」を選択");
+            }
             if (toggleButton_ServieEditMode.IsChecked == true)
             {
                 if (_isSearchLogItemEdited)
@@ -2076,7 +2122,7 @@ namespace EpgTimer.UserCtrlView
                         {
                             MenuUtil.addGenre(item1, sri1.epgEventInfoR.ContentInfo.nibbleList, (contentKindInfo0) =>
                             {
-                                if (_logItem_Edit == null)
+                                if (logItem_Edit == null)
                                 {
                                     setLogItem2Editor(logItem_Edit1);
                                 }
@@ -2096,7 +2142,7 @@ namespace EpgTimer.UserCtrlView
                         {
                             MenuUtil.addGenre(item1, sri1.epgEventInfoR.ContentInfo.nibbleList, (contentKindInfo0) =>
                             {
-                                if (_logItem_Edit == null)
+                                if (logItem_Edit == null)
                                 {
                                     setLogItem2Editor(logItem_Edit1);
                                 }
@@ -2187,6 +2233,18 @@ namespace EpgTimer.UserCtrlView
         private void button_Result_Help_Click(object sender, RoutedEventArgs e)
         {
             searchLogView.showHelp();
+        }
+
+        private void menu_Edit_NotWord_RemoveAndkey_Click(object sender, RoutedEventArgs e)
+        {
+            _logItem_Edit.removeAndkeyFromNotWords();
+            //
+            _notWordItems.Clear();
+            foreach (var item in _logItem_Edit.notWordItems_Get())
+            {
+                _notWordItems.Add(item);
+            }
+            _isSearchLogItemEdited = true;
         }
 
         #region - Inner Class -

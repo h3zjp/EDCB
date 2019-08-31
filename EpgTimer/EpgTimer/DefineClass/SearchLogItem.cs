@@ -190,9 +190,34 @@ namespace EpgTimer.DefineClass
             }
         }
 
-        public bool addNotWord(out SearchLogNotWordItem notWordItem0, long searchLogID0, string word0, bool isTitleOnly0)
+        /// <summary>
+        /// 検索ワードを除去
+        /// </summary>
+        public void removeAndkeyFromNotWords()
         {
-            string word1 = word0.Trim();
+            foreach (var nwItem1 in _notWordItems)
+            {
+                nwItem1.word = removeAndkeyFromNotWord(nwItem1.word);
+            }
+        }
+      
+        string removeAndkeyFromNotWord(string word0)
+        {
+            if (string.IsNullOrWhiteSpace(epgSearchKeyInfoS.andKey)) { return word0; }
+            //
+            string word1 = word0;
+            foreach (var item1 in Regex.Split(epgSearchKeyInfoS.andKey, "\\s+"))
+            {
+                word1 = Regex.Replace(word1, Regex.Escape(item1), " ");
+            }
+            word1 = RecLogWindow.trimKeyword(word1);
+
+            return word1;
+        }
+
+        public bool addNotWord(out SearchLogNotWordItem notWordItem0, string word0, bool isTitleOnly0)
+        {
+            string word1 = removeAndkeyFromNotWord(word0);
             foreach (var item in _notWordItems)
             {
                 if (item.word == word1)
@@ -204,7 +229,7 @@ namespace EpgTimer.DefineClass
             }
             notWordItem0 = new SearchLogNotWordItem(word1)
             {
-                searchLogID = searchLogID0,
+                searchLogID = ID,
                 isTitleOnly = isTitleOnly0
             };
             notWordItem_Add(notWordItem0);

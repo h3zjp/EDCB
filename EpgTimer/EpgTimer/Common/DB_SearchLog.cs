@@ -1,12 +1,8 @@
 ﻿using EpgTimer.DefineClass;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Data.SqlClient;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
 
 namespace EpgTimer.Common
 {
@@ -308,18 +304,24 @@ namespace EpgTimer.Common
             _db_SearchLogResult.update(resultItems0);
         }
 
-        public void updateOrInsert(SearchLogItem logItem0)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="logItem0"></param>
+        /// <returns>new items count</returns>
+        public int updateOrInsert(SearchLogItem logItem0)
         {
-            updateOrInsert(new List<SearchLogItem>() { logItem0 });
+            return updateOrInsert(new List<SearchLogItem>() { logItem0 });
         }
 
         /// <summary>
         /// Update if exists OR Insert New.
         /// </summary>
         /// <param name="logItem0"></param>
-        /// <returns></returns>
-        public void updateOrInsert(List<SearchLogItem> logItems0)
+        /// <returns>new items count</returns>
+        public int updateOrInsert(List<SearchLogItem> logItems0)
         {
+            int count_NewItem1 = 0;
             try
             {
                 using (SqlConnection sqlConn1 = new SqlConnection(sqlConnStr))
@@ -339,6 +341,7 @@ namespace EpgTimer.Common
                             else
                             {
                                 insert(logItem1, cmd1);
+                                count_NewItem1++;
                             }
                         }
                     }
@@ -348,6 +351,7 @@ namespace EpgTimer.Common
             {
                 errLog(ex0);
             }
+            return count_NewItem1;
         }
 
         public long insert(SearchLogItem logItem0, SqlCommand cmd0)

@@ -242,6 +242,7 @@
                                         <ContextMenu x:Name="menu_Edit_NotWord_Border">
                                             <MenuItem x:Name="menu_Edit_NotWord_Border_Restore" Header="パネルサイズを元に戻す(_R)" Click="menu_Edit_NotWord_Border_Restore_Click" />
                                             <MenuItem x:Name="menu_Edit_NotWord_Border_Maximize" Header="パネルサイズを拡大(_X)" Click="menu_Edit_NotWord_Border_Maximize_Click" />
+                                            <MenuItem x:Name="menu_Edit_NotWord_RemoveAndkey" Header="検索キーワードを取り除く(_A)" Click="menu_Edit_NotWord_RemoveAndkey_Click" />
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <DockPanel>
@@ -400,10 +401,10 @@
                 <DockPanel DockPanel.Dock="Top" Height="27">
                     <ToggleButton DockPanel.Dock="Left" x:Name="toggleButton_Result_ShowConfirmed" Width="150" Checked="toggleButton_Result_ShowConfirmed_Checked" Unchecked="toggleButton_Result_ShowConfirmed_Unchecked">チェック済みアイテムを表示</ToggleButton>
                     <Button DockPanel.Dock="Left" x:Name="button_Result_SearchTitleByRecLog" Width="150" Click="button_Result_SearchTitleByRecLog_Click" VerticalAlignment="Stretch">番組名を録画ログ検索</Button>
-                    <ToggleButton DockPanel.Dock="Left" x:Name="toggleButton_ServieEditMode" Width="150" Checked="toggleButton_ServieEditMode_Checked" Unchecked="toggleButton_ServieEditMode_Unchecked" Click="toggleButton_ServieEditor_Click" ToolTip="検索条件のサービスだけを簡単に編集できます">サービス編集モード</ToggleButton>
+                    <ToggleButton DockPanel.Dock="Left" x:Name="toggleButton_ServieEditMode" Width="150" Checked="toggleButton_ServieEditMode_Checked" Unchecked="toggleButton_ServieEditMode_Unchecked" Click="toggleButton_ServieEditor_Click" ToolTip="検索条件のサービスの編集だけをこのパネルでする">サービス編集のみ</ToggleButton>
                     <Button x:Name="button_Result_Clear" Width="150" Click="button_Result_Clear_Click" VerticalAlignment="Stretch">クリア</Button>
                     <Button x:Name="button_Result_Help" Width="150" Click="button_Result_Help_Click" VerticalAlignment="Stretch">ヘルプ</Button>
-                    <Label  />
+                    <Label />
                 </DockPanel>
                 <!-- Service Edit Panel -->
                 <DockPanel DockPanel.Dock="Left" x:Name="panel_serviceEditor" Visibility="Collapsed">
@@ -506,6 +507,10 @@
                         </DockPanel>
                     </Border>
                     <Label />
+                </DockPanel>
+                <!-- EPGEventInfo Panel -->
+                <DockPanel DockPanel.Dock="Right" x:Name="panel_Debug" Width="280" Visibility="Collapsed">
+                    <ListBox x:Name="listBox_DebugLog"/>
                 </DockPanel>
                 <!-- EPGEventInfo Panel -->
                 <DockPanel DockPanel.Dock="Right" x:Name="panel_Epg" Width="280" Visibility="Collapsed">

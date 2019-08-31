@@ -28,6 +28,7 @@ namespace EpgTimer
 | (【[^】]+】)+
 | (［[^］]+］)+
 | ^(\(５\．１\)|\(5\.1\))
+|^▽
 | (◆|▼).+$
 | ＜[^＞]+＞
 | （[^）]+）
@@ -211,10 +212,11 @@ namespace EpgTimer
         /// <summary>
         /// 前後の記号を取り除く
         /// </summary>
-        /// <param name="txtKey"></param>
+        /// <param name="txtKey0"></param>
         /// <returns></returns>
-        public static string trimKeyword(string txtKey, string trimWord0 = "")
+        public static string trimKeyword(string txtKey0, string trimWord0 = "")
         {
+            string txtKey1 = txtKey0.Trim();
             if (trimWord0 == "")
             {
                 trimWord0 = trimWord;
@@ -226,7 +228,7 @@ namespace EpgTimer
             }
             trimWord0 += _trimWord_NG;
             Regex rgx1 = new Regex(trimWord0, RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace);
-            string txtKey2 = rgx1.Replace(txtKey, " ").Trim();
+            string txtKey2 = rgx1.Replace(txtKey1, " ").Trim();
 
             return txtKey2;
         }
