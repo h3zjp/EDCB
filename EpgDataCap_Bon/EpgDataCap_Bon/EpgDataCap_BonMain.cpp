@@ -5,6 +5,7 @@
 #include "../../Common/CommonDef.h"
 #include "../../Common/CtrlCmdDef.h"
 #include "../../Common/CtrlCmdUtil.h"
+#include <shellapi.h>
 
 CEpgDataCap_BonMain::CEpgDataCap_BonMain(void)
 {
@@ -33,6 +34,8 @@ CEpgDataCap_BonMain::CEpgDataCap_BonMain(void)
 	this->cmdCapture = NULL;
 	this->resCapture = NULL;
 
+	this->dropSaveThresh = 0;
+	this->scrambleSaveThresh = -1;
 	this->tsBuffMaxCount = 5000;
 	this->writeBuffMaxCount = -1;
 	this->openWait = 200;
@@ -99,7 +102,7 @@ void CEpgDataCap_BonMain::ReloadSetting()
 				Format(item.ipString, L"%d.%d.%d.%d", ip >> 24, ip >> 16 & 0xFF, ip >> 8 & 0xFF, ip & 0xFF);
 			}
 			swprintf_s(key, L"Port%d", i);
-			item.port = GetPrivateProfileInt(tcp ? L"SET_TCP" : L"SET_UDP", key, tcp ? 2230 : 1234, appIniPath.c_str());
+			item.port = GetPrivateProfileInt(tcp ? L"SET_TCP" : L"SET_UDP", key, tcp ? BON_TCP_PORT_BEGIN : BON_UDP_PORT_BEGIN, appIniPath.c_str());
 			swprintf_s(key, L"BroadCast%d", i);
 			item.broadcastFlag = tcp ? 0 : GetPrivateProfileInt(L"SET_UDP", key, 0, appIniPath.c_str());
 			(tcp ? this->setTcpSendList : this->setUdpSendList).push_back(item);
@@ -130,6 +133,8 @@ void CEpgDataCap_BonMain::ReloadSetting()
 	this->bonCtrl.SetNoLogScramble(GetPrivateProfileInt( L"SET", L"NoLogScramble", 0, appIniPath.c_str() ) != 0);
 	this->bonCtrl.SetParseEpgPostProcess(GetPrivateProfileInt( L"SET", L"ParseEpgPostProcess", 0, appIniPath.c_str() ) != 0);
 
+	this->dropSaveThresh = GetPrivateProfileInt( L"SET", L"DropSaveThresh", 0, appIniPath.c_str() );
+	this->scrambleSaveThresh = GetPrivateProfileInt( L"SET", L"ScrambleSaveThresh", -1, appIniPath.c_str() );
 	this->tsBuffMaxCount = (DWORD)GetPrivateProfileInt( L"SET", L"TsBuffMaxCount", 5000, appIniPath.c_str() );
 	this->writeBuffMaxCount = GetPrivateProfileInt( L"SET", L"WriteBuffMaxCount", -1, appIniPath.c_str() );
 
@@ -287,14 +292,6 @@ void CEpgDataCap_BonMain::GetCh(
 	*SID = this->lastSID;
 }
 
-//チャンネル変更中かどうか
-//戻り値：
-// TRUE（変更中）、FALSE（完了）
-BOOL CEpgDataCap_BonMain::IsChChanging(BOOL* chChgErr)
-{
-	return this->bonCtrl.IsChChanging(chChgErr);
-}
-
 void CEpgDataCap_BonMain::SetSID(
 	WORD SID
 	)
@@ -394,30 +391,6 @@ DWORD CEpgDataCap_BonMain::GetEpgInfo(
 	}
 
 	return ret;
-}
-
-//エラーカウントをクリアする
-void CEpgDataCap_BonMain::ClearErrCount(
-	)
-{
-	if( this->nwCtrlID != 0 ){
-		this->bonCtrl.ClearErrCount(this->nwCtrlID);
-	}
-}
-
-//ドロップとスクランブルのカウントを取得する
-//引数：
-// drop				[OUT]ドロップ数
-// scramble			[OUT]スクランブル数
-void CEpgDataCap_BonMain::GetErrCount(
-	ULONGLONG* drop,
-	ULONGLONG* scramble
-	)
-{
-	if( this->nwCtrlID != 0 ){
-		this->bonCtrl.GetErrCount(this->nwCtrlID, drop, scramble);
-	}
-
 }
 
 //録画を開始する
@@ -551,15 +524,10 @@ void CEpgDataCap_BonMain::ViewAppOpen()
 
 void CEpgDataCap_BonMain::StartServer()
 {
-	wstring pipeName = L"";
-	wstring eventName = L"";
-
-	Format(pipeName, L"%s%d", CMD2_VIEW_CTRL_PIPE, GetCurrentProcessId());
-	Format(eventName, L"%s%d", CMD2_VIEW_CTRL_WAIT_CONNECT, GetCurrentProcessId());
-
+	wstring pipeName;
+	Format(pipeName, L"%ls%d", CMD2_VIEW_CTRL_PIPE, GetCurrentProcessId());
 	OutputDebugString(pipeName.c_str());
-	OutputDebugString(eventName.c_str());
-	this->pipeServer.StartServer(eventName.c_str(), pipeName.c_str(), [this](CMD_STREAM* cmdParam, CMD_STREAM* resParam) {
+	this->pipeServer.StartServer(pipeName, [this](CMD_STREAM* cmdParam, CMD_STREAM* resParam) {
 		resParam->param = CMD_ERR;
 		//同期呼び出しが不要なコマンドはここで処理する
 		switch( cmdParam->param ){
@@ -586,7 +554,7 @@ void CEpgDataCap_BonMain::StartServer()
 					val = VIEW_APP_ST_REC;
 				}else if( this->bonCtrl.GetEpgCapStatus(NULL) == CBonCtrl::ST_WORKING ){
 					val = VIEW_APP_ST_GET_EPG;
-				}else if( this->IsChChanging(&chChgErr) == FALSE && chChgErr ){
+				}else if( this->bonCtrl.IsChChanging(&chChgErr) == FALSE && chChgErr ){
 					val = VIEW_APP_ST_ERR_CH_CHG;
 				}
 				resParam->data = NewWriteVALUE(val, resParam->dataSize);
@@ -665,7 +633,7 @@ void CEpgDataCap_BonMain::StartServer()
 	});
 }
 
-BOOL CEpgDataCap_BonMain::StopServer(BOOL checkOnlyFlag)
+bool CEpgDataCap_BonMain::StopServer(bool checkOnlyFlag)
 {
 	return this->pipeServer.StopServer(checkOnlyFlag);
 }
@@ -673,10 +641,15 @@ BOOL CEpgDataCap_BonMain::StopServer(BOOL checkOnlyFlag)
 void CEpgDataCap_BonMain::GetViewStatusInfo(
 	float* signalLv,
 	int* space,
-	int* ch
+	int* ch,
+	ULONGLONG* drop,
+	ULONGLONG* scramble
 	)
 {
 	this->bonCtrl.GetViewStatusInfo(signalLv, space, ch);
+	if( this->nwCtrlID != 0 ){
+		this->bonCtrl.GetErrCount(this->nwCtrlID, drop, scramble);
+	}
 }
 
 void CEpgDataCap_BonMain::CtrlCmdCallbackInvoked()
@@ -812,24 +785,22 @@ void CEpgDataCap_BonMain::CtrlCmdCallbackInvoked()
 		{
 			SET_CTRL_REC_STOP_PARAM val;
 			if( ReadVALUE(&val, cmdParam->data, cmdParam->dataSize, NULL ) == TRUE ){
-				wstring saveFile = sys->bonCtrl.GetSaveFilePath(val.ctrlID);
-				if( saveFile.size() > 0 && val.saveErrLog == 1 ){
-					fs_path infoPath = GetPrivateProfileToFolderPath(L"SET", L"RecInfoFolder", GetCommonIniPath().c_str());
-
-					if( infoPath.empty() == false ){
-						infoPath.append(fs_path(saveFile).filename().concat(L".err").native());
-						sys->bonCtrl.SaveErrCount(val.ctrlID, infoPath.native());
-					}else{
-						wstring saveFileErr = saveFile;
-						saveFileErr += L".err";
-						sys->bonCtrl.SaveErrCount(val.ctrlID, saveFileErr);
-					}
-				}
 				SET_CTRL_REC_STOP_RES_PARAM resVal;
-				resVal.recFilePath = saveFile;
+				resVal.recFilePath = sys->bonCtrl.GetSaveFilePath(val.ctrlID);
 				resVal.drop = 0;
 				resVal.scramble = 0;
-				sys->bonCtrl.GetErrCount(val.ctrlID, &resVal.drop, &resVal.scramble);
+				if( resVal.recFilePath.empty() == false && val.saveErrLog ){
+					fs_path infoPath = GetPrivateProfileToString(L"SET", L"RecInfoFolder", L"", GetCommonIniPath().c_str());
+					if( infoPath.empty() ){
+						infoPath = resVal.recFilePath + L".err";
+					}else{
+						infoPath.append(fs_path(resVal.recFilePath).filename().concat(L".err").native());
+					}
+					sys->bonCtrl.SaveErrCount(val.ctrlID, infoPath.native(), this->dropSaveThresh, this->scrambleSaveThresh,
+					                          resVal.drop, resVal.scramble);
+				}else{
+					sys->bonCtrl.GetErrCount(val.ctrlID, &resVal.drop, &resVal.scramble);
+				}
 				BOOL subRec;
 				if( sys->bonCtrl.EndSave(val.ctrlID, &subRec) ){
 					resVal.subRecFlag = subRec != FALSE;
