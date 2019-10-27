@@ -378,6 +378,7 @@ namespace EpgTimer
         public bool ApplyReplacePatternTuner { get; set; }
         public bool ShareEpgReplacePatternTitle { get; set; }
         public bool EpgChangeBorderOnRecWeekOnly { get; set; }
+        public uint EpgChangeBorderMode { get; set; }
         public List<string> ContentColorList { get; set; }
         public List<UInt32> ContentCustColorList { get; set; }
         public List<string> EpgResColorList { get; set; }
@@ -436,6 +437,7 @@ namespace EpgTimer
             ApplyReplacePatternTuner = false;
             ShareEpgReplacePatternTitle = false;
             EpgChangeBorderOnRecWeekOnly = true;
+            EpgChangeBorderMode = 1;
             ContentColorList = new List<string>();
             ContentCustColorList = new List<uint>();
             EpgResColorList = new List<string>();
@@ -502,6 +504,7 @@ namespace EpgTimer
         public int TunerPopupMode { get; set; }
         public bool TunerPopupRecinfo { get; set; }
         public double TunerPopupWidth { get; set; }
+        public uint TunerChangeBorderMode { get; set; }
         public bool TunerInfoSingleClick { get; set; }
         public bool TunerColorModeUse { get; set; }
         public bool TunerDisplayOffReserve { get; set; }
@@ -739,8 +742,8 @@ namespace EpgTimer
             SeparateFixedTuners = IniFileHandler.GetPrivateProfileBool("SET", "SeparateFixedTuners", false, SettingPath.TimerSrvIniPath);
             DefStartMargin = IniFileHandler.GetPrivateProfileInt("SET", "StartMargin", 5, SettingPath.TimerSrvIniPath);
             DefEndMargin = IniFileHandler.GetPrivateProfileInt("SET", "EndMargin", 2, SettingPath.TimerSrvIniPath);
-            DefServiceCaption = IniFileHandler.GetPrivateProfileBool("SET", "Caption", true, SettingPath.EdcbIniPath);
-            DefServiceData = IniFileHandler.GetPrivateProfileBool("SET", "Data", false, SettingPath.EdcbIniPath);
+            DefServiceCaption = IniFileHandler.GetPrivateProfileBool("SET", "Caption", true, SettingPath.TimerSrvIniPath);
+            DefServiceData = IniFileHandler.GetPrivateProfileBool("SET", "Data", false, SettingPath.TimerSrvIniPath);
             DefRecEndMode = IniFileHandler.GetPrivateProfileInt("SET", "RecEndMode", 2, SettingPath.TimerSrvIniPath);
             DefRebootFlg = (byte)IniFileHandler.GetPrivateProfileInt("SET", "Reboot", 0, SettingPath.TimerSrvIniPath);
             RecAppWakeTime = IniFileHandler.GetPrivateProfileInt("SET", "RecAppWakeTime", 2, SettingPath.TimerSrvIniPath);
@@ -757,8 +760,8 @@ namespace EpgTimer
             IniFileHandler.WritePrivateProfileString("SET", "EndMargin", DefEndMargin, SettingPath.TimerSrvIniPath);
             IniFileHandler.WritePrivateProfileString("SET", "RecEndMode", DefRecEndMode, SettingPath.TimerSrvIniPath);
             IniFileHandler.WritePrivateProfileString("SET", "Reboot", DefRebootFlg, SettingPath.TimerSrvIniPath);
-            IniFileHandler.WritePrivateProfileString("SET", "Caption", DefServiceCaption, SettingPath.EdcbIniPath);
-            IniFileHandler.WritePrivateProfileString("SET", "Data", DefServiceData, SettingPath.EdcbIniPath);
+            IniFileHandler.WritePrivateProfileString("SET", "Caption", DefServiceCaption, SettingPath.TimerSrvIniPath);
+            IniFileHandler.WritePrivateProfileString("SET", "Data", DefServiceData, SettingPath.TimerSrvIniPath);
             IniFileHandler.WritePrivateProfileString("SET", "RecAppWakeTime", RecAppWakeTime, SettingPath.TimerSrvIniPath);
             IniFileHandler.WritePrivateProfileString("SET", "WakeUpHdd", WakeUpHdd, SettingPath.TimerSrvIniPath);
             IniFileHandler.WritePrivateProfileString("SET", "NoWakeUpHddMin", NoWakeUpHddMin, SettingPath.TimerSrvIniPath);
@@ -928,6 +931,7 @@ namespace EpgTimer
             TunerPopupRecinfo = false;
             TunerInfoSingleClick = false;
             TunerPopupWidth = 1;
+            TunerChangeBorderMode = 1;
             TunerColorModeUse = false;
             TunerDisplayOffReserve = false;
             TunerToolTipMode = 0;
@@ -1200,7 +1204,7 @@ namespace EpgTimer
             // タイミング合わせにくいので、メニュー系のデータチェックは
             // MenuManager側のワークデータ作成時に実行する。
 
-            Instance.SetCustomEpgTabInfoID();
+            Instance.SetCustomEpgTabInfoID(true);
             Instance.SearchPresetList.FixUp();
 
             //互換チェック
@@ -1423,12 +1427,18 @@ namespace EpgTimer
             return Instance.RecPresetList[Math.Max(0, Math.Min(presetID, Instance.RecPresetList.Count - 1))];
         }
 
-        public void SetCustomEpgTabInfoID()
+        //起動中はIDを再利用しない
+        private static int EpgTabCounter = 0;
+        public void SetCustomEpgTabInfoID(bool reset = false)
         {
-            for (int i = 0; i < CustomEpgTabList.Count; i++)
+            //無いと思うが一応
+            reset |= CustomEpgTabList.Count > int.MaxValue - EpgTabCounter;
+            if (reset) EpgTabCounter = 0;
+
+            CustomEpgTabList.ForEach(info =>
             {
-                CustomEpgTabList[i].ID = i;
-            }
+                if (reset || info.ID < 0) info.ID = EpgTabCounter++;
+            });
         }
 
         private static List<string> viewButtonIDs = new List<string>();
