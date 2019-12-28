@@ -2237,10 +2237,10 @@ namespace EpgTimer.UserCtrlView
 
         private void menu_Edit_NotWord_RemoveAndkey_Click(object sender, RoutedEventArgs e)
         {
-            _logItem_Edit.removeAndkeyFromNotWords();
+            logItem_Edit.removeAndkeyFromNotWords();
             //
             _notWordItems.Clear();
-            foreach (var item in _logItem_Edit.notWordItems_Get())
+            foreach (var item in logItem_Edit.notWordItems_Get())
             {
                 _notWordItems.Add(item);
             }

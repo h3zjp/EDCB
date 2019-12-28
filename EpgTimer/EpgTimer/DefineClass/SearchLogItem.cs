@@ -200,7 +200,7 @@ namespace EpgTimer.DefineClass
                 nwItem1.word = removeAndkeyFromNotWord(nwItem1.word);
             }
         }
-      
+
         string removeAndkeyFromNotWord(string word0)
         {
             if (string.IsNullOrWhiteSpace(epgSearchKeyInfoS.andKey)) { return word0; }
@@ -208,7 +208,7 @@ namespace EpgTimer.DefineClass
             string word1 = word0;
             foreach (var item1 in Regex.Split(epgSearchKeyInfoS.andKey, "\\s+"))
             {
-                word1 = Regex.Replace(word1, Regex.Escape(item1), " ");
+                word1 = Regex.Replace(word1, "\\b" + Regex.Escape(item1) + "\\b", " ");
             }
             word1 = RecLogWindow.trimKeyword(word1);
 
