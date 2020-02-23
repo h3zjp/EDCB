@@ -263,7 +263,6 @@ namespace EpgTimer
             {
                 selectedIndex0 = _tabItems.Count - 2;
             }
-            tabControl.Items.Refresh();
             tabControl.SelectedIndex = selectedIndex0;
         }
 
