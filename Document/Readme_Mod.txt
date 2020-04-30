@@ -286,7 +286,13 @@ OSのタイムゾーンの影響を受けなくなりました。予約管理や
       ・引数つきで起動したとき(iEPG予約追加など)はすぐに終了する【追加】
         ・EpgTimer.exeにiEPGファイルを与えて起動したときの動作を変更します。
       ・テーマを適用する(要再起動)【追加】
-        「デザインをロードしない」の説明を参照してください (<NoStyle>に相当)。
+        EpgTimer.exe.xmlの<NoStyle>に相当します。オフでOSデフォルト、オンでVista
+        テーマになります。オンのときEpgTimerのあるフォルダにEpgTimer.exe.rd.xaml
+        があれば、そこに定義されたリソースを適用します【追加】。iniフォルダに簡
+        単なサンプルを用意したので参考にしてください。
+      ・右クリックメニューにテーマを適用する(要再起動)【追加】
+        上述機能の右クリックメニュー限定版です。リソースを定義したいときは同様に
+        EpgTimer.exe.rdcm.xamlを作成してください。
       ・EPGデータを常に更新する(旧「EPGデータを自動的に読み込まない」相当)
         EpgTimerSrvのEPGデータをEpgTimerにダウンロードするのを、番組表を表示する
         タイミング(≒番組表タブを開くタイミング)まで遅らせるかどうか指定します。
@@ -534,14 +540,6 @@ OSのタイムゾーンの影響を受けなくなりました。予約管理や
 ◇情報通知ログを自動的にファイルに保存する
   廃止しました。EpgTimerSrv側の保存機能を利用してください。
 
-◇デザインをロードしない
-  NoStyleが0のとき、EpgTimerのあるフォルダにEpgTimer.exe.rd.xamlがあれば、そこに
-  定義されたリソースを適用します【追加】。iniフォルダに簡単なサンプルを用意した
-  ので参考にしてください。
-
-◇番組表の背景色を変更【追加】
-  EpgTimer.exe.xmlの<EpgBackColorR/G/B>で変更できます。
-
 ◇同一番組無効登録で番組名の比較の際に無視する文字列を指定する【追加】
   [無]や[生]などのついた番組名も同一番組として扱いたい場合に利用することを想定し
   たもの。EpgTimerSrv.iniのSETにRecInfo2RegExpを追加することで指定可能です。文字
@@ -621,8 +619,8 @@ HTTPサーバ機能の簡単化とディレクトリトラバーサル等々の�
 https://sourceforge.net/projects/luabinaries/files/5.2.4/Windows%20Libraries/Dynamic/
 CivetWebについては本家のドキュメント↓を参照してください(英語) ※組み込みバージョンはv1.11
 https://github.com/civetweb/civetweb/blob/master/docs/UserManual.md
-SSL/TLSを利用する場合はEpgTimerSrv.exeと同じ場所にssleay32.dllとlibeay32.dllが必要です。自ビルド(推奨)するか信頼できるどこかから入手してください。
-とりあえず https://www.openssl.org/community/binaries.html にある https://indy.fulgan.com/SSL/ で動作を確認しています。
+SSL/TLSを利用する場合はEpgTimerSrv.exeと同じ場所にlibssl-1_1(-x64).dllとlibcrypto-1_1(-x64).dllが必要です。自ビルドするか信頼できるどこかから入手してください。
+https://www.openssl.org/community/binaries.html から辿った https://bintray.com/vszakats/generic/openssl (curlメンテナによるバイナリ)のopenssl-1.1.1*で動作を確認しています。
 EpgTimerSrv.iniのSETセクションを編集し、EpgTimerSrv.exeを再起動してください。
 以下のキー[=デフォルト]を利用できます:
 
@@ -660,10 +658,10 @@ HttpRequestTimeoutSec[=120]
 HttpSslCipherList[=HIGH:!aNULL:!MD5]
   使用するSSL/TLSの暗号スイートのリスト
   # CivetWebのssl_cipher_listに相当
-HttpSslProtocolVersion[=2]
+HttpSslProtocolVersion[=4]
   受け入れるSSL/TLSプロトコルのバージョン
   # CivetWebのssl_protocol_versionに相当
-  # 値が大きいほど安全。ガラケーなどでSSL3.0が必要な場合は1にする
+  # 値が大きいほど安全。TLS1.0が必要なら2にする。ガラケーなどでSSL3.0が必要なら1にする
 HttpKeepAlive[=0]
   Keep-Aliveを有効にするかどうか
   # CivetWebのenable_keep_aliveに相当
@@ -834,25 +832,30 @@ B EpgCapNow()
   指定サービスの全イベントについて最小開始時間と最大開始時間を取得する
   開始時間未定でないイベントが1つもなければnil。
   *Archive()は過去イベントが対象。
+  (SearchEpgArchiveが存在するバージョン以降)IDの上位16bitにマッチのORマスクを付加できる。
 
-<イベント情報>のリスト|nil EnumEventInfo( {onid:I|nil, tsid:I|nil, sid:I|nil}のリスト [, {startTime:TIME|nil, durationSecond:I|nil} ] )
-<イベント情報>のリスト|nil EnumEventInfoArchive( {onid:I|nil, tsid:I|nil, sid:I|nil}のリスト [, {startTime:TIME|nil, durationSecond:I|nil} ] )
+<イベント情報>のリスト EnumEventInfo( {onid:I|nil, tsid:I|nil, sid:I|nil}のリスト [, {startTime:TIME|nil, durationSecond:I|nil} ] )
+<イベント情報>のリスト EnumEventInfoArchive( {onid:I|nil, tsid:I|nil, sid:I|nil}のリスト [, {startTime:TIME|nil, durationSecond:I|nil} ] )
   指定サービスの全イベント情報を取得する(onid>tsid>sid>eidソート、*Archive()は未ソート)
   リストのいずれかにマッチしたサービスについて取得する。
-  onid,tsid,sidフィールドを各々nilとすると、各々すべてのIDにマッチする。
-  プロセス起動直後はnil(失敗)。
+  ・onid,tsid,sidフィールドを各々nilとすると、各々すべてのIDにマッチする。
+  ・(SearchEpgArchiveが存在するバージョン以降)IDの上位16bitにマッチのORマスクを付加できる。
   第2引数にイベントの開始時間の範囲を指定できる。
   ・開始時間がstartTime以上～startTime+durationSecond未満のイベントにマッチ
   ・空テーブルのときは開始時間未定のイベントにマッチ
   *Archive()は過去イベントが対象。※再利用の可能性があるため、過去イベントのeidをIDとして扱うべきでない。
                                   ※取得対象が月～年単位になりうるので、サービス指定も時間指定もない呼び出しは控えるべき。
+  以前はnilが返る場合があったが(SearchEpgArchiveが存在するバージョン以降)常にリストが返る。
 
-<イベント情報>のリスト|nil SearchEpg( <自動予約検索条件> )
+<イベント情報>のリスト SearchEpg( <自動予約検索条件> [, {startTime:TIME|nil, durationSecond:I|nil} ] )
+<イベント情報>のリスト SearchEpgArchive( <自動予約検索条件> [, {startTime:TIME|nil, durationSecond:I|nil} ] )
 <イベント情報>|nil SearchEpg( ネットワークID:I, TSID:I, サービスID:I, イベントID:I )
   イベント情報を検索する
-  1引数のときは<自動予約検索条件>にマッチしたイベントを取得する。
+  1～2引数のときは<自動予約検索条件>にマッチしたイベントを取得する。(onid>tsid>sid>eidソート、SearchEpgArchiveは未ソート)
+  (SearchEpgArchiveが存在するバージョン以降)第2引数にイベントの開始時間の範囲を指定できる。
+  SearchEpgArchive()は過去イベントが対象。※取得対象が月～年単位になりうるので、時間指定のない呼び出しは控えるべき。
+  以前はnilが返る場合があったが(SearchEpgArchiveが存在するバージョン以降)常にリストが返る。
   4引数のときは指定イベントを取得する。なければnilが返る。
-  プロセス起動直後はnil(失敗)。
 
 B AddReserveData( <予約情報> )
   予約を追加する
@@ -1213,7 +1216,6 @@ end
   ### 以下のプロパティは取得系メソッドで常にnil
   network:I|nil=対象ネットワーク(+1=地デジ,+2=BS,+4=CS1+CS2,+8=その他。該当サービスがserviceListに追加される。互換用なので使用しないこと)
   days:I|nil=対象期間(現時刻からdays*24時間以内。SearchEpg以外では無視される)
-  days29:I|nil=対象期間(現時刻からdays*29時間以内。互換用なので使用しないこと。SearchEpg以外では無視される)
 }
 
 <自動予約(プログラム)登録情報>={
