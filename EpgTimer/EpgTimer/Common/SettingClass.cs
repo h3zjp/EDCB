@@ -283,17 +283,13 @@ namespace EpgTimer
             path = string.IsNullOrEmpty(path) == true ? GetDefSettingFolderPath(isSrv) : path;
             return (Path.IsPathRooted(path) ? "" : GetModulePath(isSrv).TrimEnd('\\') + "\\") + path;
         }
-        public static string DefSettingFolderPath
-        {
-            get { return GetDefSettingFolderPath(); }
-        }
         public static string SettingFolderPath
         {
             get { return GetSettingFolderPath(); }
             set
             {
                 string path = CheckFolder(value);
-                bool isDefaultPath = path == "" || path.TrimEnd('\\').Equals(SettingPath.DefSettingFolderPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) == true;
+                bool isDefaultPath = path == "" || path.TrimEnd('\\').Equals(GetDefSettingFolderPath().TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) == true;
                 if (CommonManager.Instance.NWMode == false)
                 {
                     IniFileHandler.WritePrivateProfileString("SET", "DataSavePath", isDefaultPath == true ? null : path, SettingPath.CommonIniPath);
@@ -461,9 +457,9 @@ namespace EpgTimer
     }
     public class Settings
     {
-        //ver履歴 20200411、20200320、20190520、20190321、20190217、20170717、20170512
+        //ver履歴 20200723、20200721、20200528、20200411、20200320、20190520、20190321、20190217、20170717、20170512
         private int verSaved = 0;
-        public int SettingFileVer { get { return 20200411; } set { verSaved = value; } }
+        public int SettingFileVer { get { return 20200723; } set { verSaved = value; } }
 
         public bool UseCustomEpgView { get; set; }
         public List<CustomEpgTabInfo> CustomEpgTabList { get; set; }
@@ -471,6 +467,7 @@ namespace EpgTimer
         public bool NoToolTip { get; set; }
         public double ToolTipWidth { get; set; }
         public bool NoBallonTips { get; set; }
+        public bool BalloonTipRealtime { get; set; }
         public int ForceHideBalloonTipSec { get; set; }
         public bool PlayDClick { get; set; }
         public bool ConfirmDelRecInfoFileDelete { get; set; }
@@ -556,9 +553,11 @@ namespace EpgTimer
         public bool RecInfoNoYear { get; set; }
         public bool RecInfoNoSecond { get; set; }
         public bool RecInfoNoDurSecond { get; set; }
+        public bool RecInfoNoEnd { get; set; }
         public bool ResInfoNoYear { get; set; }
         public bool ResInfoNoSecond { get; set; }
         public bool ResInfoNoDurSecond { get; set; }
+        public bool ResInfoNoEnd { get; set; }
         public string TvTestExe { get; set; }
         public string TvTestCmd { get; set; }
         public bool NwTvMode { get; set; }
@@ -597,6 +596,10 @@ namespace EpgTimer
         public List<uint> RecEndCustColors { get; set; }
         public string ListDefColor { get; set; }
         public UInt32 ListDefCustColor { get; set; }
+        public string ListRuledLineColor { get; set; }
+        public UInt32 ListRuledLineCustColor { get; set; }
+        public bool ListRuledLine { get; set; }
+        public bool ListRuledLineContent { get; set; }
         public List<string> RecModeFontColors { get; set; }
         public List<uint> RecModeFontCustColors { get; set; }
         public List<string> ResBackColors { get; set; }
@@ -711,15 +714,14 @@ namespace EpgTimer
                 {
                     defRecFolders = new List<string>();
                     int num = IniFileHandler.GetPrivateProfileInt("SET", "RecFolderNum", 0, SettingPath.CommonIniPath);
-                    if (num <= 0) defRecFolders.Add("");
 
                     for (int i = 0; i < num; i++)
                     {
                         defRecFolders.Add(IniFileHandler.GetPrivateProfileFolder("SET", "RecFolderPath" + i.ToString(), SettingPath.CommonIniPath));
                     }
 
-                    if (defRecFolders[0] == "") defRecFolders[0] = SettingPath.SettingFolderPath;
                     defRecFolders = defRecFolders.Except(new[] { "" }).ToList();
+                    if (defRecFolders.Count == 0) defRecFolders.Add(SettingPath.GetSettingFolderPath(true));
                 }
                 return defRecFolders;
             }
@@ -729,7 +731,7 @@ namespace EpgTimer
         {
             if (defRecFolders == null) return;
 
-            int recFolderCount = defRecFolders.Count == 1 && defRecFolders[0].Equals(SettingPath.SettingFolderPath, StringComparison.OrdinalIgnoreCase) == true ? 0 : defRecFolders.Count;
+            int recFolderCount = defRecFolders.Count == 1 && defRecFolders[0].Equals(SettingPath.GetSettingFolderPath(true), StringComparison.OrdinalIgnoreCase) == true ? 0 : defRecFolders.Count;
             IniFileHandler.WritePrivateProfileString("SET", "RecFolderNum", recFolderCount, SettingPath.CommonIniPath);
             IniFileHandler.DeletePrivateProfileNumberKeys("SET", SettingPath.CommonIniPath, "RecFolderPath");
 
@@ -888,6 +890,10 @@ namespace EpgTimer
             RecEndCustColors = new List<uint>();
             ListDefColor = "カスタム";
             ListDefCustColor = 0xFF042271;
+            ListRuledLineColor = "LightGray";
+            ListRuledLineCustColor = 0xFFFFFFFF;
+            ListRuledLine = true;
+            ListRuledLineContent = true;
             RecModeFontColors = new List<string>();
             RecModeFontCustColors = new List<uint>();
             ResBackColors = new List<string>();
@@ -901,6 +907,7 @@ namespace EpgTimer
             NoToolTip = false;
             ToolTipWidth = 400;
             NoBallonTips = false;
+            BalloonTipRealtime = false;
             ForceHideBalloonTipSec = 0;
             PlayDClick = false;
             ConfirmDelRecInfoFileDelete = true;
@@ -983,9 +990,11 @@ namespace EpgTimer
             RecInfoNoYear = false;
             RecInfoNoSecond = false;
             RecInfoNoDurSecond = false;
+            RecInfoNoEnd = false;
             ResInfoNoYear = false;
             ResInfoNoSecond = false;
             ResInfoNoDurSecond = false;
+            ResInfoNoEnd = false;
             TvTestExe = "";
             TvTestCmd = "";
             NwTvMode = false;
@@ -1098,6 +1107,8 @@ namespace EpgTimer
             dest.WndSettings = WndSettings;
             dest.SearchWndTabsHeight = SearchWndTabsHeight;
             dest.SearchWndJunreHeight = SearchWndJunreHeight;
+            dest.SetWithoutSearchKeyWord = SetWithoutSearchKeyWord;
+            dest.SetWithoutRecTag = SetWithoutRecTag;
             dest.RecInfoColumnHead = RecInfoColumnHead;
             dest.RecInfoSortDirection = RecInfoSortDirection;
             dest.OpenFolderWithFileDialog = OpenFolderWithFileDialog;
@@ -1347,6 +1358,34 @@ namespace EpgTimer
         private static void CompatibilityCheck()
         {
             //最新
+            if (Instance.verSaved >= 20200723) return;
+
+            //互換用コード。カラム名の変更追従。
+            ReplaceColumTag("StartTimeNoDuration", CommonUtil.NameOf(() => new ReserveItem().StartTime), Instance.ReserveListColumn, Instance.RecInfoListColumn);
+
+            if (Instance.verSaved >= 20200721) return;
+
+            //録画無効モード導入の調整。
+            Instance.CustomEpgTabList.ForEach(tab =>
+            {
+                if (tab.RecSetting != null)
+                {
+                    tab.RecSetting.IsEnable = tab.RecSetting.RecMode / 5 % 2 == 0;
+                    tab.RecSetting.RecMode = (byte)((tab.RecSetting.RecMode + tab.RecSetting.RecMode / 5 % 2) % 5); ;
+                }
+            });
+            //互換用コード。カラム名の変更追従。
+            ReplaceColumTag("RecEnabled", CommonUtil.NameOf(() => new SearchItem().IsEnabled), Instance.ReserveListColumn);
+
+            if (Instance.verSaved >= 20200528) return;
+
+            //フォーク元との擦り合せ。ショートカットキーの変更に伴い、該当部分を初期化。
+            var chgCmds = new[] { EpgCmds.AddInDialog, EpgCmds.ChangeInDialog, EpgCmds.DeleteInDialog, EpgCmds.ReSearch, EpgCmds.ReSearch2 };
+            Instance.MenuSet.EasyMenuItems.ForEach(item =>
+            {
+                if(chgCmds.Contains(item.GetCommand())) item.ShortCuts.Clear();
+            });
+
             if (Instance.verSaved >= 20200411) return;
 
             //互換用コード。ボタン列非表示関連追従。
@@ -1616,6 +1655,7 @@ namespace EpgTimer
                 return new List<ListColumnInfo>
                 {
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.StartTime) },
+                    new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.Duration) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.NetworkName) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.ServiceName) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.EventName) },
@@ -1633,6 +1673,7 @@ namespace EpgTimer
                 {
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.IsProtect) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.StartTime) },
+                    new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.Duration) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.NetworkName) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.ServiceName) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.EventName) },
@@ -1662,6 +1703,7 @@ namespace EpgTimer
                 {
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.DayOfWeek) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.StartTime) },
+                    new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.Duration) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.EventName) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.ServiceName) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.RecMode) },
@@ -1675,6 +1717,7 @@ namespace EpgTimer
                 {
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.Status) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.StartTime) },
+                    new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.Duration) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.NetworkName) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.ServiceName) },
                     new ListColumnInfo { Tag = CommonUtil.NameOf(() => obj.EventName) },
@@ -1944,6 +1987,7 @@ namespace EpgTimer
             public DashStyle TunerDashStyle { get; private set; }
             public List<Brush> ResBackColor { get; private set; }
             public Brush ListDefForeColor { get; private set; }
+            public Brush ListRuledLineColor { get; private set; }
             public List<Brush> RecModeForeColor { get; private set; }
             public List<Brush> ResStatusColor { get; private set; }
             public List<Brush> RecEndBackColor { get; private set; }
@@ -2016,6 +2060,7 @@ namespace EpgTimer
                 SimpleColorSet(TunerResBorderColor, Instance.TunerServiceColors, Instance.TunerServiceCustColors, 7 + 8, 7 + 8 + 4);
 
                 ListDefForeColor = CustColorBrush(Instance.ListDefColor, Instance.ListDefCustColor);
+                ListRuledLineColor = Instance.ListRuledLine == false ? null : CustColorBrush(Instance.ListRuledLineColor, Instance.ListRuledLineCustColor);
 
                 SimpleColorSet(RecModeForeColor, Instance.RecModeFontColors, Instance.RecModeFontCustColors);
                 SimpleColorSet(ResBackColor, Instance.ResBackColors, Instance.ResBackCustColors);

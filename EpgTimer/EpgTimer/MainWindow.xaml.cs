@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Text;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,7 +18,7 @@ namespace EpgTimer
     /// <summary>
     /// MainWindow.xaml の相互作用ロジック
     /// </summary>
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window, ITaskTrayClickHandler
     {
         private Dictionary<string, Button> buttonList = new Dictionary<string, Button>();
         private MenuBinds mBinds = new MenuBinds();
@@ -193,14 +194,6 @@ namespace EpgTimer
                     }
                     Dispatcher.BeginInvoke(new Action(() => UpdateReserveTab()), DispatcherPriority.Loaded);
                 }
-
-                //タスクトレイの設定
-                TrayManager.Tray.Click += (sender, e) =>
-                {
-                    Show();
-                    WindowState = Settings.Instance.WndSettings[this].LastWindowState;
-                    Activate();
-                };
 
                 ResetMainView();
 
@@ -404,20 +397,51 @@ namespace EpgTimer
             if (Settings.Instance.ShowTray == false)
             {
                 TrayManager.Tray.Dispose();
-                TrayManager.Tray.ContextMenuList = null;
                 TrayManager.Tray.IconUri = null;
                 TrayManager.Tray.Text = "";
                 return;
             }
             TrayManager.UpdateInfo();
-            TrayManager.Tray.ContextMenuList = Settings.Instance.TaskMenuList.Select(info =>
-            {
-                if (buttonList.ContainsKey(info) == false) return new KeyValuePair<string, EventHandler>(null, null);
-                string id = info;//CS4対応のキャプチャ
-                return new KeyValuePair<string, EventHandler>(buttonList[id].Content as string, (sender, e) => CommonButtons_Click(id));
-            }).ToList();
             TrayManager.Tray.ForceHideBalloonTipSec = Settings.Instance.ForceHideBalloonTipSec;
+            TrayManager.Tray.BalloonTipRealtime = Settings.Instance.BalloonTipRealtime;
             TrayManager.Tray.Visible = true;
+        }
+        public void TaskTrayLeftClick()
+        {
+            Show();
+            WindowState = Settings.Instance.WndSettings[this].LastWindowState;
+            Activate();
+        }
+        public void TaskTrayRightClick()
+        {
+            if (Settings.Instance.TaskMenuList.Count == 0) return;
+
+            var menu = new ContextMenuEx();
+            foreach (string info in Settings.Instance.TaskMenuList)
+            {
+                if(buttonList.ContainsKey(info))
+                {
+                    //Contentに置き換えるのはカスタムボタン対応
+                    string id = info;//CS4対応のキャプチャ
+                    var item = new MenuItem();
+                    item.Header = MenuUtil.DeleteAccessKey(buttonList[id].Content as string, true);
+                    item.Click += (sender, e) => CommonButtons_Click(id);
+                    menu.Items.Add(item);
+                }
+                else
+                {
+                    menu.Items.Add(new Separator());
+                }
+            }
+
+            menu.IsOpen = true;
+            var ps = PresentationSource.FromVisual(menu);
+            if (ps != null)
+            {
+                //Activate()したいがContextMenuからWindowを取得できないので仕方なく
+                CommonUtil.SetForegroundWindow(((System.Windows.Interop.HwndSource)ps).Handle);
+                menu.Focus();
+            }
         }
 
         const string specific = "PushLike";
@@ -1148,13 +1172,13 @@ namespace EpgTimer
                 switch (id)
                 {
                     case 1:
-                        System.Diagnostics.Process.Start(Settings.Instance.Cust1BtnCmd, Settings.Instance.Cust1BtnCmdOpt);
+                        using (Process.Start(Settings.Instance.Cust1BtnCmd, Settings.Instance.Cust1BtnCmdOpt)) { }
                         break;
                     case 2:
-                        System.Diagnostics.Process.Start(Settings.Instance.Cust2BtnCmd, Settings.Instance.Cust2BtnCmdOpt);
+                        using (Process.Start(Settings.Instance.Cust2BtnCmd, Settings.Instance.Cust2BtnCmdOpt)) { }
                         break;
                     case 3:
-                        System.Diagnostics.Process.Start(Settings.Instance.Cust3BtnCmd, Settings.Instance.Cust3BtnCmdOpt);
+                        using (Process.Start(Settings.Instance.Cust3BtnCmd, Settings.Instance.Cust3BtnCmdOpt)) { }
                         break;
                 }
             }

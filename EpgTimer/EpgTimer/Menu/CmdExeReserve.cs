@@ -123,7 +123,7 @@ namespace EpgTimer
             //多数アイテム処理の警告。合計数に対して出すので、結構扱いづらい。
             if (MenuUtil.CautionManyMessage(dataList.Count + eventListEx.Count, "簡易予約/有効←→無効") == false) return;
 
-            bool ret1 = MenuUtil.ReserveChangeOnOff(dataList, GetRecSetting(), false);
+            bool ret1 = MenuUtil.ReserveChangeOnOff(dataList, false);
             var eList = dataList.Count == 0 ? eventListEx :
                 HasList == true ? eventListEx.FindAll(data => data.IsReservable == true) : new List<EpgEventInfo>();
             bool ret2 = MenuUtil.ReserveAdd(eList, GetRecSetting(), 0, false);
@@ -277,6 +277,16 @@ namespace EpgTimer
             //番組情報優先
             IsCommandExecuted = true == MenuUtil.OpenInfoSearchDialog((headDataEv ?? headDataRec).DataTitle, CmdExeUtil.IsKeyGesture(e));
         }
+        protected override void mc_OpenFolder(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (headDataRec == null)
+            {
+                base.mc_OpenFolder(sender, e);
+                return;
+            }
+            CommonManager.OpenRecFolder(headDataRec.RecFilePath);
+            IsCommandExecuted = true;
+        }
         protected override void mc_SearchTitle(object sender, ExecutedRoutedEventArgs e)
         {
             //番組情報優先
@@ -429,7 +439,7 @@ namespace EpgTimer
             }
             else if (menu.Tag == EpgCmdsEx.OpenFolderMenu)
             {
-                mm.CtxmGenerateOpenFolderItems(menu, headData is ReserveData ? dataList[0].RecSetting : null, headDataRec != null ? headDataRec.RecFilePath : null);
+                mm.CtxmGenerateOpenFolderItems(menu, headData is ReserveData ? dataList[0].RecSetting : null, headDataRec != null ? headDataRec.RecFilePath : null, !(ctxm.Tag is int && (int)(ctxm.Tag) != 2));
             }
             else if (menu.Tag == EpgCmdsEx.ViewMenu)
             {
@@ -451,7 +461,7 @@ namespace EpgTimer
             }
             //DeleteはRecInfo分含めてdataList.Countに入っている。
             int procCount = GetCmdParam(icmd).ExeType == cmdExeType.SingleItem ? 1 :
-                            icmd == EpgCmds.Add || icmd == EpgCmds.AddOnPreset ? eventListAdd.Count :
+                            icmd == EpgCmds.AddReserve || icmd == EpgCmds.AddOnPreset ? eventListAdd.Count :
                                 dataList.Count + (icmd == EpgCmds.ChgOnOff ? eventListEx.Count : 0);
 
             return procCount == 0 ? null : GetCmdMessageFormat(cmdMsg, procCount);

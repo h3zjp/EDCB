@@ -24,7 +24,7 @@ namespace EpgTimer
         public RecPresetItem LookUpPreset(bool IsManual = false, bool CopyData = false, bool ResCompare = false)
         {
             RecPresetItem preset = LookUpPreset(Settings.Instance.RecPresetList, IsManual, ResCompare);
-            return preset == null ? new RecPresetItem("登録時", RecPresetItem.CustomID, CopyData == true ? this.DeepClone() : null) : preset;
+            return preset ?? new RecPresetItem("登録時", RecPresetItem.CustomID, CopyData == true ? this.DeepClone() : null);
         }
         public RecPresetItem LookUpPreset(IEnumerable<RecPresetItem> refdata, bool IsManual = false, bool ResCompare = false)
         {
@@ -43,7 +43,8 @@ namespace EpgTimer
                 && Priority == other.Priority
                 && (RebootFlag == other.RebootFlag || RecEndIsDefault)//動作後設定デフォルト時
                 && RecFolderList.EqualsTo(other.RecFolderList)
-                && (RecMode == other.RecMode || ResCompare && (RecMode == 5 || other.RecMode == 5))
+                && (IsEnable == other.IsEnable || ResCompare)
+                && (RecMode == other.RecMode)
                 && (ServiceMode == other.ServiceMode || ((ServiceMode | other.ServiceMode) & 0x0F) == 0)//字幕等データ設定デフォルト時
                 && (StartMargine == other.StartMargine || IsMarginDefault)//マージンデフォルト時
                 && SuspendMode == other.SuspendMode//動作後設定
@@ -57,9 +58,7 @@ namespace EpgTimer
         {
             get
             {
-                List<string> defs = Settings.Instance.DefRecFolders;
-                string def1 = defs.Count == 0 ? "!Default" : defs[0];
-                Func<string, string> AdjustName = (f => f == "!Default" ? def1 : f);
+                var AdjustName = new Func<string, string>(f => f == "!Default" ? Settings.Instance.DefRecFolders[0] : f);
 
                 return RecFolderList.Select(info => AdjustName(info.RecFolder)).Concat(
                     PartialRecFolder.Select(info => "(ワンセグ) " + AdjustName(info.RecFolder))).ToList();

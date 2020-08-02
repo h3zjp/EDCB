@@ -1,15 +1,16 @@
-TARGET ?= EpgTimerSrv.exe
-CPPFLAGS := -I. -DNDEBUG -DWIN32 -D_WINDOWS -D_UNICODE -DUNICODE -D_WIN32_WINNT=0x0600 -DUSE_LUA -DNO_CGI -DNO_POPEN -DOPENSSL_API_1_1 $(CPPFLAGS)
+TARGET ?= EpgTimerSrv
+CPPFLAGS := -I. -DNDEBUG -DWIN32 -D_WINDOWS -D_UNICODE -DUNICODE -D_WIN32_WINNT=0x0600 -DUSE_LUA -DUSE_IPV6 -DNO_CGI -DNO_POPEN -DOPENSSL_API_1_1 $(CPPFLAGS)
 #CPPFLAGS += -DEPGDB_STD_WREGEX
 CFLAGS := -Os $(CFLAGS)
-CXXFLAGS := -Os $(CXXFLAGS)
-LDFLAGS := -municode -mwindows -Wl,-s,--dynamicbase,--nxcompat -static-libgcc -static-libstdc++ $(LDFLAGS)
-LDLIBS := -lws2_32 -lole32 -lcomctl32 -lwinhttp -loleaut32 -lcrypt32 -liphlpapi -luuid -lnetapi32 $(LDLIBS)
+CXXFLAGS := -std=c++17 -pedantic-errors -Os $(CXXFLAGS)
+LDFLAGS2 = -municode -mwindows -Wl,-s,--dynamicbase,--nxcompat -static-libgcc -static-libstdc++ $(LDFLAGS)
+LDLIBS := -lws2_32 -lole32 -lcomctl32 -lwinhttp -loleaut32 -lcrypt32 -liphlpapi -luuid -lnetapi32 -ldbghelp $(LDLIBS)
 WINDRES ?= windres
 DEP_ALL_H := $(wildcard ../../BonCtrl/*.h ../../Common/*.h)
 CUR_ALL_H := $(wildcard *.h *.inl)
 
 ifdef withlua
+  CPPFLAGS += -DEPGTIMERSRV_WITHLUA
   SOURCES_LUA = \
     lua__lapi.c \
     lua__lauxlib.c \
@@ -56,8 +57,7 @@ ifdef withlua
     lua_zlib1__uncompr.c \
     lua_zlib1__zutil.c
 else
-  # Lazy loading fails with segfault if LUA_LIB undefined.
-  CPPFLAGS += -DLUA_BUILD_AS_DLL -DLUA_LIB
+  # Lazy loading fails with segfault if LUA_BUILD_AS_DLL defined.
   SOURCES_LUA =
   LDLIBS := -L. -llua52-mingw-lazy-$(or $(MSYSTEM_CARCH),$(findstring x86_64,$(MAKE_HOST)),i686) $(LDLIBS)
 endif
@@ -67,7 +67,7 @@ ifndef MSYSTEM
   CPPFLAGS += -DMUST_IMPLEMENT_CLOCK_GETTIME
 endif
 
-$(TARGET): $(addsuffix .obj, \
+$(TARGET).exe: $(addsuffix .obj, \
   $(SOURCES_LUA) \
   BonCtrl__CreatePATPacket.cpp \
   BonCtrl__PacketInit.cpp \
@@ -82,6 +82,7 @@ $(TARGET): $(addsuffix .obj, \
   Common__ReNamePlugInUtil.cpp \
   Common__SendCtrlCmd.cpp \
   Common__ServiceUtil.cpp \
+  Common__StackTrace.cpp \
   Common__StringUtil.cpp \
   Common__TCPServer.cpp \
   Common__TimeShiftUtil.cpp \
@@ -103,7 +104,7 @@ $(TARGET): $(addsuffix .obj, \
   UpnpSsdpServer.cpp \
   EpgTimerSrv.rc \
   )
-	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
+	$(CXX) $(LDFLAGS2) $^ $(LDLIBS) -o $@
 BonCtrl__%.cpp.obj: ../../BonCtrl/%.cpp stdafx.h.gch $(DEP_ALL_H)
 	$(COMPILE.cpp) $(OUTPUT_OPTION) $<
 Common__%.cpp.obj: ../../Common/%.cpp stdafx.h.gch $(DEP_ALL_H)
@@ -127,4 +128,4 @@ else
 	powershell -NoProfile -Command "&{cat $<|Out-File -Encoding UTF8 $@}"
 endif
 clean:
-	$(RM) stdafx.h.gch *.obj $(TARGET)
+	$(RM) stdafx.h.gch *.obj $(TARGET).exe $(TARGET).map

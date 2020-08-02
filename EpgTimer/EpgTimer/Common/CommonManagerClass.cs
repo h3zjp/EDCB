@@ -63,8 +63,9 @@ namespace EpgTimer
         }
 
         public static readonly string[] DayOfWeekArray = Enumerable.Range(0, 7).Select(i => (new DateTime(2000, 1, 2 + i)).ToString("ddd")).ToArray();
-        public static readonly string[] RecModeList = new string[] { "全サービス", "指定サービス", "全サービス(デコード処理なし)", "指定サービス(デコード処理なし)", "視聴", "無効" };
+        public static readonly string[] RecModeList = new string[] { "全サービス", "指定サービス", "全サービス(デコード処理なし)", "指定サービス(デコード処理なし)", "視聴" };
         public static readonly string[] RecEndModeList = new string[] { "何もしない", "スタンバイ", "休止", "シャットダウン" };
+        public static readonly string[] IsEnableList = new string[] { "無効", "有効" };
         public static readonly string[] YesNoList = new string[] { "しない", "する" };
         public static readonly string[] PriorityList = new string[] { "1 (低)", "2", "3", "4", "5 (高)" };
         public static readonly Dictionary<char, List<KeyValuePair<string, string>>> ReplaceUrlDictionary = CreateReplaceDictionary(",０,0,１,1,２,2,３,3,４,4,５,5,６,6,７,7,８,8,９,9" +
@@ -587,8 +588,10 @@ namespace EpgTimer
             string[] src = reftxt.Split(new char[] { ' ', '～' });
             return src[0].Substring(6, 1) + " " + src[1] + " ～ " + src[2].Substring(6, 1) + " " + src[3];
         }
-        public static String ConvertTimeText(DateTime start, uint duration, bool isNoYear, bool isNoSecond, bool isNoEndDay = true, bool isNoStartDay = false)
+        public static String ConvertTimeText(DateTime start, uint duration, bool isNoYear, bool isNoSecond, bool isNoEndDay = true, bool isNoStartDay = false, bool isNoEnd = false)
         {
+            if (isNoEnd) return ConvertTimeText(start, isNoYear, isNoSecond, isNoStartDay);
+
             DateTime end = start + TimeSpan.FromSeconds(duration);
 
             if (Settings.Instance.LaterTimeUse == true)
@@ -940,6 +943,11 @@ namespace EpgTimer
             return ConvertValueText(val, RecEndModeList);
         }
 
+        public static string ConvertIsEnableText(bool val)
+        {
+            return ConvertValueText(val ? 1 : 0, IsEnableList);
+        }
+
         public static String ConvertYesNoText(int val)
         {
             return ConvertValueText(val, YesNoList);
@@ -1169,7 +1177,7 @@ namespace EpgTimer
             return nwPath;
         }
 
-        public static void OpenFolder(String folderPath, String title = "フォルダを開く")
+        public static void OpenRecFolder(string folderPath)
         {
             try
             {
@@ -1180,13 +1188,13 @@ namespace EpgTimer
 
                 if (String.IsNullOrWhiteSpace(path) == true)
                 {
-                    MessageBox.Show("パスが見つかりません。\r\n\r\n" + folderPath, title, MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("パスが見つかりません。\r\n\r\n" + folderPath, "録画フォルダを開く", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
                 {
                     //オプションに応じて一つ上のフォルダから対象フォルダを選択した状態で開く。
                     String cmd = isFile == true || noParent == false && Settings.Instance.MenuSet.OpenParentFolder == true ? "/select," : "";
-                    Process.Start("EXPLORER.EXE", cmd + "\"" + path + "\"");
+                    using (Process.Start("EXPLORER.EXE", cmd + "\"" + path + "\"")) { }
                 }
             }
             catch (Exception ex) { MessageBox.Show(ex.ToString()); }
@@ -1415,13 +1423,12 @@ namespace EpgTimer
             var now = CommonUtil.EdcbNowEpg;
             var start = now.AddMinutes(1 + Settings.Instance.RecAppWakeTime);
             var past = start.AddMinutes(-Settings.Instance.NoWakeUpHddMin);
-            List<ReserveData> reslist = Instance.DB.ReserveList.Values.Where(info => info.RecSetting.RecMode < 4).ToList();
+            List<ReserveData> reslist = Instance.DB.ReserveList.Values.Where(info => info.RecSetting.IsEnable && info.RecSetting.RecMode < 4).ToList();
             List<ReserveData> onlist = reslist.Where(info => info.IsOnRec(now)).ToList();
             List<ReserveData> stlist = reslist.Where(info => info.OnTime(start) >= 0).Except(onlist).ToList();
 
             //録画フォルダの抽出メソッド
-            string def1 = Settings.Instance.DefRecFolders.Count == 0 ? "" : Settings.Instance.DefRecFolders[0];
-            def1 = string.IsNullOrEmpty(def1) == true ? SettingPath.SettingFolderPath : def1;
+            string def1 = Settings.Instance.DefRecFolders[0];
             var cnv = new PathConverter(SettingPath.EdcbExePath);//今のところ同じフォルダにある前提だが、設定があるので変換しておく
             Func<List<ReserveData>, IEnumerable<IGrouping<string, string>>> RecFolders = list =>
             {
