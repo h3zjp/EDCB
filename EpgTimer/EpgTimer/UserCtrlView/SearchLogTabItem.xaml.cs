@@ -90,9 +90,6 @@ namespace EpgTimer.UserCtrlView
             listView_SearchLog.ItemsSource = _searchLogItems;
             listView_Result.ItemsSource = _searchLogResultItems;
 
-            listView_SearchLog.setColumnHeaderToolTip(gridView_SeachLog);
-            listView_Result.setColumnHeaderToolTip(gridView_Result);
-
             reset_ServiceEditor();
         }
 
@@ -248,13 +245,13 @@ namespace EpgTimer.UserCtrlView
                             ReserveData reserveData1;
                             if (reserveDict1.TryGetValue(resultItem1.epgEventInfoR.Create64PgKey(), out reserveData1))
                             {
-                                if (reserveData1.RecSetting.RecMode == 0x05)
+                                if (reserveData1.RecSetting.IsEnable)
                                 {
-                                    resultItem1.recodeStatus = RecLogItem.RecodeStatuses.無効登録;
+                                    resultItem1.recodeStatus = RecLogItem.RecodeStatuses.予約済み;
                                 }
                                 else
                                 {
-                                    resultItem1.recodeStatus = RecLogItem.RecodeStatuses.予約済み;
+                                    resultItem1.recodeStatus = RecLogItem.RecodeStatuses.無効登録;
                                 }
                             }
                             else

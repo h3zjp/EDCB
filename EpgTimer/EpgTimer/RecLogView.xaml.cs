@@ -66,7 +66,6 @@ namespace EpgTimer
             };
             //
             listView_RecLog.DataContext = _recLogItems;
-            listView_RecLog.setColumnHeaderToolTip(gridView_RecLog);
             comboBox_Edit_Status.DataContext = new object[] {
                 RecLogItem.RecodeStatuses.予約済み, RecLogItem.RecodeStatuses.録画完了, RecLogItem.RecodeStatuses.録画異常,  RecLogItem.RecodeStatuses.視聴済み,
                 RecLogItem.RecodeStatuses.無効登録, RecLogItem.RecodeStatuses.不明

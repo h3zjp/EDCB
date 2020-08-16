@@ -37,18 +37,7 @@ namespace EpgTimer.UserCtrlView
         #region - Method -
         #endregion
 
-        public void setColumnHeaderToolTip(GridView gridView)
-        {
-            foreach (GridViewColumn info in gridView.Columns)
-            {
-                GridViewColumnHeader header = info.Header as GridViewColumnHeader;
-                if (header.ToolTip == null)
-                {
-                    header.ToolTip = "Ctrl+Click(マルチ・ソート)、Shift+Click(解除)";
-                }
-            }
-        }
-
+        /// <summary>
         /// <summary>
         /// 
         /// </summary>
@@ -65,6 +54,19 @@ namespace EpgTimer.UserCtrlView
             _sortAdornerDict.Clear();
         }
 
+        void setColumnHeaderToolTip()
+        {
+            GridView gridView = this.View as GridView;
+            foreach (GridViewColumn info in gridView.Columns)
+            {
+                GridViewColumnHeader header = info.Header as GridViewColumnHeader;
+                if (header.ToolTip == null)
+                {
+                    header.ToolTip = "Ctrl+Click(マルチ・ソート)、Shift+Click(解除)";
+                }
+            }
+        }
+
         #region - Property -
         #endregion
 
@@ -74,6 +76,7 @@ namespace EpgTimer.UserCtrlView
         private void ListViewSrt_Loaded(object sender, RoutedEventArgs e)
         {
             _viewSource = (ListCollectionView)CollectionViewSource.GetDefaultView(ItemsSource);
+            setColumnHeaderToolTip();
         }
 
         void ColumnHeader_Click(Object sender, RoutedEventArgs e)
