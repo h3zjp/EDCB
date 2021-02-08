@@ -588,6 +588,26 @@ namespace EpgTimer
             r.Read(ref user_nibble_2);
             r.End();
         }
+        public override bool Equals(object obj)
+        {
+            if (obj == null)
+            {
+                return false;
+            }
+            EpgContentData ecd0 = obj as EpgContentData;
+            if (ecd0 == null)
+            {
+                return false;
+            }
+            return (content_nibble_level_1 == ecd0.content_nibble_level_1
+                && content_nibble_level_2 == ecd0.content_nibble_level_2 
+                && user_nibble_1 == ecd0.user_nibble_1
+                && user_nibble_2 == ecd0.user_nibble_2);
+        }
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
+        }
         public object DeepCloneObj() { return MemberwiseClone(); }
     }
 
@@ -952,6 +972,18 @@ namespace EpgTimer
             r.Read(ref FreeCAFlag);
             r.End();
         }
+        public override bool Equals(object obj) 
+        {
+            EpgEventInfo info0 = (EpgEventInfo)obj;
+            return (original_network_id == info0.original_network_id
+                && transport_stream_id == info0.transport_stream_id
+                && service_id == info0.service_id
+                && event_id == info0.event_id);
+        }
+        public override int GetHashCode() 
+       {
+            return base.GetHashCode();
+        }
     }
 
     public class EpgEventInfoMinimum : ICtrlCmdReadWrite
@@ -1133,6 +1165,16 @@ namespace EpgTimer
             r.Read(ref endHour);
             r.Read(ref endMin);
             r.End();
+        }
+        public override bool Equals(object obj)
+        {
+            EpgSearchDateInfo info1 = (EpgSearchDateInfo)obj;
+            return (startDayOfWeek == info1.startDayOfWeek && startHour == info1.startHour && startMin == info1.startMin
+                && endDayOfWeek == info1.endDayOfWeek && endHour == info1.endHour && endMin == info1.endMin);
+        }
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
         }
         public object DeepCloneObj() { return MemberwiseClone(); }
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -64,7 +64,7 @@ namespace EpgTimer
                 lstCtrl.SetSelectionChangedEventHandler((sender, e) => this.UpdateStatus(1));
 
                 //最初にコマンド集の初期化
-                mc = new CmdExeReserve(this);
+                mc = new CmdExeSearch(this);
                 mc.SetFuncGetSearchList(isAll => (isAll == true ? lstCtrl.dataList.ToList() : lstCtrl.GetSelectedItemsList()));
                 mc.SetFuncSelectSingleSearchData((noChange) => lstCtrl.SelectSingleItem(noChange));
                 mc.SetFuncReleaseSelectedData(() => listView_result.UnselectAll());
@@ -283,7 +283,7 @@ namespace EpgTimer
                 {
                     SearchItem item = lstCtrl.SelectSingleItem();
                     EpgSearchKeyInfo defKey = MenuUtil.SendAutoAddKey(item.EventInfo, CmdExeUtil.IsKeyGesture(e), GetSearchKey());
-                    
+
                     if (e.Command == EpgCmds.ReSearch)
                     {
                         SetSearchKey(defKey);
@@ -454,7 +454,7 @@ namespace EpgTimer
 
         protected AutoAddMode winMode = AutoAddMode.Find;
         protected void SetViewMode(AutoAddMode mode)
-        { 
+        {
             winMode = mode;
             SetWindowTitle();
             if (mode != AutoAddMode.Change) dataID = 0;

@@ -773,6 +773,9 @@ namespace EpgTimer
                 }
             }
             AttendantWindow.UpdatesPinned();
+
+            recLogView.Init(this);
+            searchLogView.Init(recLogView);
         }
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
@@ -859,6 +862,10 @@ namespace EpgTimer
                 }
                 foreach (Window win in Application.Current.Windows)
                 {
+                    // ToolWindow は触らない (InfoWindow用)
+                    if (win.WindowStyle == WindowStyle.ToolWindow || win.WindowStyle == WindowStyle.None)
+                        continue;
+
                     win.Visibility = Visibility.Visible;
                 }
                 AttendantWindow.UpdatesPinned();
@@ -972,6 +979,12 @@ namespace EpgTimer
                     case Key.D5:
                         tabItem_epg.IsSelected = true;
                         break;
+                    case Key.D6:
+                        tabItem_recLog.IsSelected = true;
+                        break;
+                    case Key.D7:
+                        tabItem_searchLog.IsSelected = true;
+                        break;
                     default:
                         return;
                 }
@@ -1034,6 +1047,7 @@ namespace EpgTimer
             ChgReserveWindow.UpdatesInfo();
             RecInfoDescWindow.UpdatesInfo();
             NotifyLogWindow.UpdatesInfo();
+            searchLogView.RefreshSetting();
         }
 
         public void RefreshMenu()
@@ -1397,6 +1411,8 @@ namespace EpgTimer
                         if (epgReload == true) AddReserveEpgWindow.UpdatesInfo();
                         ChgReserveWindow.UpdatesInfo();
                         TrayManager.UpdateInfo();
+                        searchLogView.update_EpgData();
+                        recLogView.update((UpdateNotifyItem)status.notifyID);
                         StatusManager.StatusNotifyAppend((epgReload == true ? "EPG" : "予約名") + "データ更新 < ");
                     }
                     break;
@@ -1408,6 +1424,8 @@ namespace EpgTimer
                         RefreshAllViewsReserveInfo();
                         UpdateReserveTab();
                         TrayManager.UpdateInfo();
+                        searchLogView.update_ReserveInfo();
+                        recLogView.update((UpdateNotifyItem)status.notifyID);
                         StatusManager.StatusNotifyAppend("予約データ更新 < ");
                     });
                     break;
@@ -1420,6 +1438,7 @@ namespace EpgTimer
                         AddReserveEpgWindow.UpdatesInfo(false);
                         InfoSearchWindow.UpdatesInfo();
                         RecInfoDescWindow.UpdatesInfo();
+                        recLogView.update((UpdateNotifyItem)status.notifyID);
                         StatusManager.StatusNotifyAppend("録画済みデータ更新 < ");
                     }
                     break;
@@ -1464,7 +1483,7 @@ namespace EpgTimer
                     break;
             }
 
-            if (err != ErrCode.CMD_SUCCESS) StatusManager.StatusNotifyAppend("情報更新中にエラー発生 < ");
+			if (err != ErrCode.CMD_SUCCESS) StatusManager.StatusNotifyAppend("情報更新中にエラー発生 < ");
             if (notifyLogWindowUpdate == true) NotifyLogWindow.UpdatesInfo();
         }
 

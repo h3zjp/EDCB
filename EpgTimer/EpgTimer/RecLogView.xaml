@@ -1,0 +1,210 @@
+﻿<UserControl x:Class="EpgTimer.RecLogView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:EpgTimer.UserCtrlView"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+    <DockPanel>
+        <!-- 検索 Panel -->
+        <DockPanel  DockPanel.Dock="Left" Width="130">
+            <Border  DockPanel.Dock="Bottom"  x:Name="border_ToggleButton_Setting" BorderBrush="Yellow" BorderThickness="2" Height="30">
+                <ToggleButton x:Name="toggleButton_Setting" IsChecked="True"  Click="toggleButton_Setting_Click">設定</ToggleButton>
+            </Border>
+            <Border  DockPanel.Dock="Bottom"  x:Name="border_Button_SaveSearchOption" BorderBrush="Yellow" BorderThickness="2" Height="30">
+                <Button DockPanel.Dock="Left"  x:Name="button_SaveSearchOption" Click="button_SaveSearchOption_Click" ToolTip="「検索対象」「録画ステータス」「表示数」を保存します">検索オプションの保存</Button>
+            </Border>
+            <DockPanel  Name="stackPanel_Search" Background="White">
+                <TextBox DockPanel.Dock="Top" Name="textBox_Search" Height="25"  VerticalContentAlignment="Center"  KeyDown="textBox_Search_KeyDown" ToolTip="Enter 実行" />
+                <DockPanel DockPanel.Dock="Top" Height="27">
+                    <Button DockPanel.Dock= "Left" x:Name="button_Search" Width="95"  Click="button_Search_Click" VerticalAlignment="Stretch">検索</Button>
+                    <Button x:Name="button_Reset" Click="button_Reset_Click" ToolTip="検索ワード・ボックスと検索結果リストビューをクリア" Padding="0" VerticalAlignment="Stretch">クリア</Button>
+                </DockPanel>
+                <DockPanel DockPanel.Dock="Top" Background="#E6E6E6">
+                    <CheckBox x:Name="checkBox_Search_All" Margin="3, 7, 3, 0" Click="checkBox_Search_All_Click" IsChecked="True"/>
+                    <Label DockPanel.Dock="Top" VerticalContentAlignment="Center" FontSize="13.333">検索対象</Label>
+                </DockPanel>
+                <StackPanel x:Name="panel_Search_CheckBox" DockPanel.Dock="Top">
+                    <CheckBox DockPanel.Dock="Top"   Name="checkBox_Search_Title" Margin="3" IsChecked="True" Click="checkBox_Search_Click">番組名</CheckBox>
+                    <CheckBox DockPanel.Dock="Top"   Name="checkBox_Search_Content" Margin="3" IsChecked="True" Click="checkBox_Search_Click" >番組内容</CheckBox>
+                    <CheckBox DockPanel.Dock="Top"   Name="checkBox_Search_Comment" Margin="3" IsChecked="True" Click="checkBox_Search_Click">コメント</CheckBox>
+                    <CheckBox DockPanel.Dock="Top"   Name="checkBox_Search_RecFileName" Margin="3" IsChecked="True" Click="checkBox_Search_Click">録画ファイル名</CheckBox>
+                </StackPanel>
+                <DockPanel DockPanel.Dock="Top" Background="#E6E6E6">
+                    <CheckBox x:Name="checkBox_RecStatus_All" Margin="3, 7, 3, 0" Click="checkBox_RecStatus_All_Click" IsChecked="True"/>
+                    <Label DockPanel.Dock="Top" VerticalContentAlignment="Center" FontSize="13.333">録画ステータス</Label>
+                </DockPanel>
+                <StackPanel x:Name="panel_RecStatus_CheckBox" DockPanel.Dock="Top">
+                    <CheckBox  DockPanel.Dock="Top"  Name="checkBox_RecStatus_Reserved" Margin="3" IsChecked="True"  Click="checkBox_RecStatus_Click">予約済み</CheckBox>
+                    <CheckBox   DockPanel.Dock="Top" Name="checkBox_RecStatus_Recoded" Margin="3" IsChecked="True"  Click="checkBox_RecStatus_Click">録画完了</CheckBox>
+                    <CheckBox   DockPanel.Dock="Top" Name="checkBox_RecStatus_Recoded_Abnormal" Margin="3" IsChecked="True"  Click="checkBox_RecStatus_Click">録画異常</CheckBox>
+                    <CheckBox   DockPanel.Dock="Top" Name="checkBox_RecStatus_Viewed" Margin="3" IsChecked="True"  Click="checkBox_RecStatus_Click">視聴済み</CheckBox>
+                    <CheckBox   DockPanel.Dock="Top" Name="checkBox_RecStatus_Reserved_Null" Margin="3" IsChecked="True"  Click="checkBox_RecStatus_Click">無効登録</CheckBox>
+                    <CheckBox   DockPanel.Dock="Top" Name="checkBox_RecStatus_Cancelled" Margin="3" IsChecked="True" Click="checkBox_RecStatus_Click">放送中止</CheckBox>
+                    <CheckBox   DockPanel.Dock="Top" Name="checkBox_RecStatus_Unkown" Margin="3" IsChecked="True" Click="checkBox_RecStatus_Click">不明</CheckBox>
+                </StackPanel>
+                <DockPanel DockPanel.Dock="Top" Height="27" Margin="0,5,0,0">
+                    <Label DockPanel.Dock="Left" Width="60" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">表示数</Label>
+                    <TextBox Name="textBox_ResultLimit" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" KeyDown="textBox_ResultLimit_KeyDown">50</TextBox>
+                </DockPanel>
+                <DockPanel />
+            </DockPanel>
+        </DockPanel>
+        <!-- 設定Grid  -->
+        <Border x:Name="panel_Setting"  Visibility="Visible" BorderBrush="Gray" BorderThickness="1" Padding="1,0,0,0">
+            <DockPanel >
+                <DockPanel  DockPanel.Dock="Left" Background="White" Width="135">
+                    <Border DockPanel.Dock="Top" x:Name="border_CheckBox_RecLogEnabled" BorderBrush="Yellow" BorderThickness="2">
+                        <CheckBox x:Name="checkBox_RecLogEnabled" Margin="3,7,0,7" VerticalContentAlignment="Center" Click="checkBox_RecLogEnabled_Click">
+                            <TextBlock TextWrapping="Wrap">
+                            録画・検索ログを有効にする
+                            </TextBlock>
+                        </CheckBox>
+                    </Border>
+                    <Label DockPanel.Dock="Top" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">SQLServerコンピュータ名</Label>
+                    <TextBox DockPanel.Dock="Top" x:Name="textBox_MachineName" Height="25" KeyDown="textBox_MachineName_KeyDown"/>
+                    <Label DockPanel.Dock="Top" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">SQLServerインスタンス名</Label>
+                    <TextBox DockPanel.Dock="Top" x:Name="textBox_InstanceName"  Height="25" KeyDown="textBox_InstanceName_KeyDown"/>
+                    <Border DockPanel.Dock="Top" x:Name="border_Button_DB_ConnectTest" BorderBrush="Yellow" BorderThickness="2">
+                        <Button x:Name="button_DB_ConnectTest"  Height="27" Click="button_DB_ConnectTest_Click">DB接続テスト</Button>
+                    </Border>
+                    <Label DockPanel.Dock="Top" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">検索方法</Label>
+                    <StackPanel DockPanel.Dock="Top" >
+                        <RadioButton x:Name="radioButton_SearchMethod_Like" Margin="5" ToolTip="精度が高い。少し遅い">LIKE</RadioButton>
+                        <RadioButton x:Name="radioButton_SearchMethod_Contains" Margin="5"  ToolTip="まれに検索漏れがある。早い">Contains</RadioButton>
+                        <RadioButton x:Name="radioButton_SearchMethod_Freetext" Margin="5"  ToolTip="あいまい検索。早い">Freetext</RadioButton>
+                    </StackPanel>
+                    <Label DockPanel.Dock="Top" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">録画ログWindow</Label>
+                    <Grid DockPanel.Dock="Top" >
+                        <Label Width="50" HorizontalAlignment="Left" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">表示数</Label>
+                        <TextBox Name="textBox_ResultLimit_RecLogWindow" Margin="50,0,0,0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">50</TextBox>
+                    </Grid>
+                    <ListBox x:Name="listBox_DBLog" />
+                </DockPanel>
+                <RichTextBox x:Name="richTextBox_HowTo" Block.LineHeight="1" IsReadOnly="True" />
+            </DockPanel>
+        </Border>
+        <!--編集Grid -->
+        <DockPanel  DockPanel.Dock="Right"  x:Name="grid_Edit" Background="White" Width="200">
+            <DockPanel DockPanel.Dock="Bottom"  Height="30">
+                <Button DockPanel.Dock="Left" x:Name="button_Edit_Update" Width="140" Click="button_Edit_Update_Click" >更　新</Button>
+                <Button x:Name="button_Edit_Cancel" Click="button_Edit_Cancel_Click" >キャンセル</Button>
+            </DockPanel>
+            <Label DockPanel.Dock="Top" HorizontalContentAlignment="Center" FontSize="14" FontWeight="Bold" VerticalContentAlignment="Center" VerticalAlignment="Center"  Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" FontFamily="Meiryo">編　集</Label>
+            <TextBox DockPanel.Dock="Top" Margin="1" Name="textBox_Edit_ProgramTitle" Height="25" VerticalContentAlignment="Center" BorderBrush="Yellow" >タイトル</TextBox>
+            <Label DockPanel.Dock="Top" x:Name="label_Editor_Date" Background="WhiteSmoke">2015/01/01(月) 00:00 ~ 12/31 23:59</Label>
+            <Label DockPanel.Dock="Top" x:Name="label_Editor_ServiceName" Background="WhiteSmoke">NHK総合（地デジ）</Label>
+            <Border DockPanel.Dock="Top" x:Name="border_RecStatus" BorderBrush="Yellow" BorderThickness="1">
+                <Grid  Margin="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="60" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Label Grid.Column="0" HorizontalContentAlignment="Right">ステータス</Label>
+                    <ComboBox Grid.Column="1" Name="comboBox_Edit_Status" ItemsSource="{Binding}" SelectionChanged="comboBox_Edit_Status_SelectionChanged" />
+                </Grid>
+            </Border>
+            <Border DockPanel.Dock="Top" x:Name="border_AllowOverWrite" BorderBrush="Yellow" BorderThickness="1">
+                <CheckBox  Margin="5" Name="checkBox_AllowOverWrite" Click="checkBox_AllowOverWrite_Click"  ToolTip="チェックするとコメント意外の編集した内容が失われます">EPGデータの自動更新を許可</CheckBox>
+            </Border>
+            <Label  DockPanel.Dock="Top" Content="ファイル名" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+            <TextBox DockPanel.Dock="Top" x:Name="textBox_RecFilePath" Height="25" BorderBrush="Yellow" />
+            <Label  DockPanel.Dock="Top" Content="コメント" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+            <RichTextBox DockPanel.Dock="Top" x:Name="richTextBox_Comment" Height="50" TextChanged="richTextBox_Comment_TextChanged" BorderBrush="Yellow"/>
+            <Label  DockPanel.Dock="Top" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">番組概要</Label>
+            <RichTextBox DockPanel.Dock="Top" x:Name="richTextBox_ShortInfo_text_char" Height="100" TextChanged="richTextBox_ShortInfo_text_char_TextChanged" BorderBrush="Yellow" />
+            <Label  DockPanel.Dock="Top" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">番組詳細</Label>
+            <RichTextBox x:Name="richTextBox_ExtInfo_text_char" BorderBrush="Yellow" TextChanged="richTextBox_ExtInfo_text_char_TextChanged"/>
+        </DockPanel>
+        <!-- 検索結果ListView -->
+        <local:ListViewSrt x:Name="listView_RecLog"  SelectionMode="Extended" ItemsSource="{Binding}" AllowDrop="False" BorderThickness="3,1,1,3" SelectionChanged="listView_RecLog_SelectionChanged">
+            <ListView.Resources>
+                <ContextMenu x:Key="itemMenu" x:Name="menu_RecLog">
+                    <!--<MenuItem x:Name="menu_RecLog_Play" Header="再生(_P) [W-Click],[Ctrl+P]" Click="menu_RecLog_Play_Click" IsEnabled="{Binding isRecFileExist}"/>-->
+                    <MenuItem x:Name="menu_RecLog_OpenFolder" Header="録画ファイルの場所を開く(_I)" Click="menu_RecLog_OpenFolder_Click" IsEnabled="{Binding isRecFileExist}"/>
+                    <MenuItem x:Name="menu_RecLog_DeleteRecFile" Header="録画ファイルを削除(_F)" Click="menu_RecLog_DeleteRecFile_Click" IsEnabled="{Binding isRecFileExist}"/>
+                    <MenuItem x:Name="menu_RecLog_ChangeStatus" Header="ステータス変更(_C)" >
+                        <MenuItem x:Name="menu_RecLog_ChangeStatus_Reserve" Header="予約済み(_1)" Click="menu_RecLog_ChangeStatus_Reserve_Click"/>
+                        <MenuItem x:Name="menu_RecLog_ChangeStatus_Recorded" Header="録画完了(_2)" Click="menu_RecLog_ChangeStatus_Recorded_Click"/>
+                        <MenuItem x:Name="menu_RecLog_ChangeStatus_Error" Header="録画異常(_3)" Click="menu_RecLog_ChangeStatus_Error_Click"/>
+                        <MenuItem x:Name="menu_RecLog_ChangeStatus_Viewed" Header="視聴済み(_4)" Click="menu_RecLog_ChangeStatus_Viewed_Click"/>
+                        <MenuItem x:Name="menu_RecLog_ChangeStatus_Disabled" Header="無効登録(_5)" Click="menu_RecLog_ChangeStatus_Disabled_Click"/>
+                        <MenuItem x:Name="menu_RecLog_ChangeStatus_Unknown" Header="不明(_6)" Click="menu_RecLog_ChangeStatus_Unknown_Click"/>
+                    </MenuItem>
+                    <MenuItem x:Name="menu_RecLog_Del" Header="ログ削除 (_D) [Delete]" Click="menu_RecLog_Del_Click"/>
+                </ContextMenu>
+            </ListView.Resources>
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="ContextMenu" Value="{DynamicResource itemMenu}" />
+                    <Setter Property="Height" Value="19" />
+                    <Setter Property="BorderThickness" Value="5,0,0,1" />
+                    <Setter Property="BorderBrush" Value="{Binding borderBrush}" />
+                    <EventSetter Event="ContextMenuOpening" Handler="listViewItem_RecLog_ContextMenuOpening" />
+                    <EventSetter Event="KeyDown" Handler="listViewItem_RecLog_KeyDown" />
+                    <EventSetter Event="MouseDoubleClick" Handler="listViewItem_RecLog_MouseDoubleClick" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.View>
+                <GridView x:Name="gridView_RecLog">
+                    <GridViewColumn DisplayMemberBinding="{Binding Path=dateStr}">
+                        <GridViewColumn.Header>
+                            <GridViewColumnHeader Content="日時" Tag="date" HorizontalContentAlignment="Center" />
+                        </GridViewColumn.Header>
+                    </GridViewColumn>
+                    <GridViewColumn DisplayMemberBinding="{Binding Path=tvProgramTitle}">
+                        <GridViewColumn.Header>
+                            <GridViewColumnHeader Content="番組名" Tag="tvProgramTitle" HorizontalContentAlignment="Center" />
+                        </GridViewColumn.Header>
+                    </GridViewColumn>
+                    <GridViewColumn DisplayMemberBinding="{Binding Path=recodeStatus}">
+                        <GridViewColumn.Header>
+                            <GridViewColumnHeader Content="ステータス" Tag="recodeStatus" HorizontalContentAlignment="Center" />
+                        </GridViewColumn.Header>
+                    </GridViewColumn>
+                    <GridViewColumn Width="35">
+                        <GridViewColumn.Header>
+                            <GridViewColumnHeader Content="画質" HorizontalContentAlignment="Center" Tag="imageQuality"/>
+                        </GridViewColumn.Header>
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Path=imageQuality}" Foreground="{Binding Path=foreground_ImageQuality}" TextAlignment="Center"/>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Width="50">
+                        <GridViewColumn.Header>
+                            <GridViewColumnHeader Content="ファイル" HorizontalContentAlignment="Center" Tag="exsitRecFile"/>
+                        </GridViewColumn.Header>
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock TextAlignment="Center">
+                                    <Hyperlink NavigateUri="{Binding recFilePath}" RequestNavigate="Hyperlink_RequestNavigate" ToolTip="再生">
+                                        <TextBlock Text="{Binding exsitRecFile}"/>
+                                    </Hyperlink>
+                                </TextBlock>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn DisplayMemberBinding="{Binding Path=tvProgramSummary}">
+                        <GridViewColumn.Header>
+                            <GridViewColumnHeader Content="番組概要" Tag="tvProgramSummary" HorizontalContentAlignment="Center" />
+                        </GridViewColumn.Header>
+                    </GridViewColumn>
+                    <GridViewColumn DisplayMemberBinding="{Binding Path=comment}">
+                        <GridViewColumn.Header>
+                            <GridViewColumnHeader Content="コメント" Tag="comment" HorizontalContentAlignment="Center"/>
+                        </GridViewColumn.Header>
+                    </GridViewColumn>
+                    <GridViewColumn DisplayMemberBinding="{Binding Path=recFilePath}">
+                        <GridViewColumn.Header>
+                            <GridViewColumnHeader Content="録画ファイル名" Tag="recFilePath" HorizontalContentAlignment="Center" />
+                        </GridViewColumn.Header>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+        </local:ListViewSrt>
+    </DockPanel>
+</UserControl>

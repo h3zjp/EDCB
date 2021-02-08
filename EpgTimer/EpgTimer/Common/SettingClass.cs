@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,6 +13,8 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Xml.Serialization;
+using EpgTimer.Common;
+using EpgTimer.DefineClass;
 
 namespace EpgTimer
 {
@@ -787,6 +789,97 @@ namespace EpgTimer
             other.recPresetList = recPresetList.DeepClone();
             other.defRecFolders = defRecFolders == null ? null : defRecFolders.ToList();
         }
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool RecLog_SearchLog_IsEnabled
+        {
+            get { return _RecLog_SearchLog_IsEnabled; }
+            set { _RecLog_SearchLog_IsEnabled = value; }
+        }
+        bool _RecLog_SearchLog_IsEnabled = false;
+        /// <summary>
+        /// 
+        /// </summary>
+        public string RecLog_DB_MachineName
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(_RecLog_DB_MachineName))
+                {
+                    return Environment.MachineName;
+                }
+                else
+                {
+                    return _RecLog_DB_MachineName;
+                }
+            }
+            set { _RecLog_DB_MachineName = value; }
+        }
+        string _RecLog_DB_MachineName = null;
+        /// <summary>
+        /// 
+        /// </summary>
+        public string RecLog_DB_InstanceName
+        {
+            get { return _RecLog_DB_InstanceName; }
+            set { _RecLog_DB_InstanceName = value; }
+        }
+        string _RecLog_DB_InstanceName = "SQLEXPRESS";
+        /// <summary>
+        /// 
+        /// </summary>
+        public RecLogView.searchMethods RecLog_SearchMethod
+        {
+            get { return _RecLog_SearchMethod; }
+            set { _RecLog_SearchMethod = value; }
+        }
+        RecLogView.searchMethods _RecLog_SearchMethod = RecLogView.searchMethods.Contrains;
+        /// <summary>
+        /// 
+        /// </summary>
+        public int RecLog_SearchColumn
+        {
+            get { return _RecLog_SearchColumn; }
+            set { _RecLog_SearchColumn = value; }
+        }
+        int _RecLog_SearchColumn = (int)DB_RecLog.searchColumns.ALL;
+        /// <summary>
+        /// 
+        /// </summary>
+        public int RecLog_RecodeStatus
+        {
+            get { return _RecLog_RecodeStatuses; }
+            set { _RecLog_RecodeStatuses = value; }
+        }
+        int _RecLog_RecodeStatuses = (int)RecLogItem.RecodeStatuses.ALL;
+        /// <summary>
+        /// 
+        /// </summary>
+        public int RecLog_SearchResultLimit
+        {
+            get { return _RecLog_SearchResultLimit; }
+            set { _RecLog_SearchResultLimit = value; }
+        }
+        int _RecLog_SearchResultLimit = 50;
+        /// <summary>
+        /// 
+        /// </summary>
+        public int RecLogWindow_SearchResultLimit
+        {
+            get { return _RecLogWindow_SearchResultLimit; }
+            set { _RecLogWindow_SearchResultLimit = value; }
+        }
+        int _RecLogWindow_SearchResultLimit = 20;
+        /// <summary>
+        /// 
+        /// </summary>
+        public string RecLog_TrimWord
+        {
+            get { return this._RecLog_TrimWord; }
+            set { this._RecLog_TrimWord = value; }
+        }
+        string _RecLog_TrimWord = null;
 
         public Settings()
         {

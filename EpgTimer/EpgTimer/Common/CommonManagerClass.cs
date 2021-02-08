@@ -1035,7 +1035,7 @@ namespace EpgTimer
             var check = new HashSet<int>(ChSet5.ChList.Values.Select(info => info.IsDttv ? -1 : info.IsBS ? -2 : info.IsCS ? -3 : info.IsSPHD ? -4 : -5));
             return setInfo.Where(info => check.Contains(info.ID)).ToList();
         }
-
+        
         public static void GetFolderNameByDialog(TextBox txtBox, string Description = "", bool checkNWPath = false, string defaultPath = "")
         {
             GetPathByDialog(txtBox, checkNWPath, path => GetFolderNameByDialog(path, Description), defaultPath);
